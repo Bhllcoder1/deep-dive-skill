@@ -5,10 +5,11 @@ CLI varsa kullanır, yoksa generic fallback.
 """
 
 from .generic import GenericRuntime
+from ._cli_parallel import run_cli_parallel
 import os
 import shutil
 import subprocess
-from typing import Optional
+from typing import Any, Callable, List, Optional
 
 
 class WindsurfRuntime(GenericRuntime):
@@ -105,3 +106,8 @@ class WindsurfRuntime(GenericRuntime):
 
         # Fallback to GenericRuntime (DeepSeek API)
         return super().agent_call(prompt, schema=schema, label=label, phase=phase)
+
+    def run_parallel(self, fn_list: List[Callable[[], Any]], max_workers: int = 3) -> List[Any]:
+        if self._windsurf_path:
+            return run_cli_parallel(fn_list, max_workers)
+        return super().run_parallel(fn_list, max_workers)

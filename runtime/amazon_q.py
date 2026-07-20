@@ -6,6 +6,8 @@ import subprocess
 from typing import Optional
 
 from .generic import GenericRuntime
+from ._cli_parallel import run_cli_parallel
+from typing import Any, Callable, List
 
 
 class AmazonQRuntime(GenericRuntime):
@@ -82,3 +84,8 @@ class AmazonQRuntime(GenericRuntime):
                 print(f"[amazon_q] CLI invocation failed: {exc}; falling back to generic")
 
         return super().agent_call(prompt, schema=schema, label=label, phase=phase)
+
+    def run_parallel(self, fn_list: List[Callable[[], Any]], max_workers: int = 3) -> List[Any]:
+        if self._amazon_q_path:
+            return run_cli_parallel(fn_list, max_workers)
+        return super().run_parallel(fn_list, max_workers)

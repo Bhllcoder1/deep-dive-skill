@@ -34,7 +34,7 @@ python3 harness.py "Compare Storj vs Filebase decentralized storage"
 
 ## Features
 
-- **14 runtime adapters** — Hermes, Claude Code, generic Python, Aider, Codex, Cline/Roo, Cursor, Gemini, GitHub Copilot, Amazon Q, Windsurf, Kimi, GLM, and MiniMax
+- **15 runtime adapters** — Hermes, Claude Code, generic Python, Aider, Codex, Cline/Roo, Cursor, Gemini, GitHub Copilot, Amazon Q, Windsurf, Kimi, GLM, MiniMax, and Antigravity
 - **Adversarial verification** — verifier calls attempt to refute every selected claim; ties and incomplete support are not confirmed
 - **Structured output** — JSON or readable text reports with confidence, sources, refuted claims, unverified claims, caveats, and run statistics
 - **Configurable scope and cost** — tier presets plus bounded overrides for search angles, fetches, claims, votes, refutations, and concurrency
@@ -43,7 +43,7 @@ python3 harness.py "Compare Storj vs Filebase decentralized storage"
 
 ## Platform Support
 
-All 14 adapters are registered in `runtime/__init__.py`. The nine CLI adapters send each agent prompt to the local CLI on standard input and parse JSON from its output; if the CLI is missing, fails, or returns invalid JSON, they fall back to `GenericRuntime`.
+All 15 adapters are registered in `runtime/__init__.py`. The ten CLI adapters send each agent prompt to the local CLI on standard input, parse JSON from its output, and run those CLI calls in a bounded local worker pool; if the CLI is missing, fails, or returns invalid JSON, they fall back to `GenericRuntime`.
 
 | Platform | Runtime name | Selection | Agent execution path | Search/fetch path |
 |----------|--------------|-----------|----------------------|-------------------|
@@ -61,6 +61,7 @@ All 14 adapters are registered in `runtime/__init__.py`. The nine CLI adapters s
 | Kimi Code | `kimi` | `KIMI_CLI` or forced | Local `kimi`, then `~/.kimi-code/bin/kimi`, else generic fallback | Generic search/fetch |
 | GLM Code (Z.ai) | `glm` | `GLM_CLI` or forced | Local `glm`, then `zai`, else generic fallback | Generic search/fetch |
 | MiniMax Code | `minimax` | `MINIMAX_CLI` or forced | Local `minimax` CLI, else generic fallback | Generic search/fetch |
+| Google Antigravity CLI | `antigravity` | `ANTIGRAVITY_CLI` or forced | Local `antigravity` CLI, else generic fallback; its interactive `/agent` and `/agents` commands are not used | Generic search/fetch |
 
 All adapters expose bounded parallel work to the pipeline; `DR_MAX_WORKERS` controls the verifier concurrency and is hard-capped at 20.
 

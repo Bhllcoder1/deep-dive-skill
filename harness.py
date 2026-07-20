@@ -26,7 +26,7 @@ _CONFIG_MAP = {
 }
 _RUNTIMES = {
     "auto", "hermes", "claude_code", "generic", "aider", "codex", "cline",
-    "cursor", "gemini", "copilot", "amazon_q", "windsurf", "kimi", "glm", "minimax",
+    "cursor", "gemini", "copilot", "amazon_q", "windsurf", "kimi", "glm", "minimax", "antigravity",
 }
 _CONFIG_LOCK = threading.RLock()
 

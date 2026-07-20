@@ -46,7 +46,8 @@ def detect() -> str:
     13. KIMI_CLI
     14. GLM_CLI
     15. MINIMAX_CLI
-    16. generic (fallback)
+    16. ANTIGRAVITY_CLI
+    17. generic (fallback)
     """
     force = os.environ.get("DR_RUNTIME", "auto")
     if force and force != "auto":
@@ -80,6 +81,8 @@ def detect() -> str:
         return "glm"
     if os.environ.get("MINIMAX_CLI"):
         return "minimax"
+    if os.environ.get("ANTIGRAVITY_CLI"):
+        return "antigravity"
 
     return "generic"
 
@@ -146,6 +149,9 @@ def get_runtime(runtime_name: Optional[str] = None) -> BaseRuntime:
     elif name == "minimax":
         from .minimax import MiniMaxRuntime
         return MiniMaxRuntime()
+    elif name == "antigravity":
+        from .antigravity import AntigravityRuntime
+        return AntigravityRuntime()
     else:
         from .generic import GenericRuntime
         return GenericRuntime()
@@ -166,5 +172,6 @@ register("windsurf", None)
 register("kimi", None)
 register("glm", None)
 register("minimax", None)
+register("antigravity", None)
 
 __all__ = ["BaseRuntime", "get_runtime", "detect", "register"]
