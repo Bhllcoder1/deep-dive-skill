@@ -4,6 +4,14 @@
   <img src="assets/cover.png" alt="Deep Dive Skill" width="360">
 </p>
 
+<p align="center">
+  <img alt="License" src="https://img.shields.io/badge/license-MIT-blue.svg">
+  <img alt="Python" src="https://img.shields.io/badge/python-3.9%2B-blue.svg">
+  <img alt="Platforms" src="https://img.shields.io/badge/runtime%20adapters-15-brightgreen.svg">
+  <img alt="Dependencies" src="https://img.shields.io/badge/dependencies-zero%20(stdlib%20%2B%20curl)-lightgrey.svg">
+  <img alt="Built with Codex" src="https://img.shields.io/badge/hardened%20with-OpenAI%20Codex%20(GPT--5.6)-412991.svg">
+</p>
+
 **Deep Dive** is a universal, adversarially verified deep-research agent that runs as a portable *skill* on top of AI coding and agent platforms. Point it at a question; it returns a claim-by-claim, source-cited report where each accepted claim has survived independent cross-examination.
 
 ```
