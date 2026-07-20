@@ -10,3 +10,6 @@ build/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.claude/
+.browser-sessions/
+deep-research-*.json

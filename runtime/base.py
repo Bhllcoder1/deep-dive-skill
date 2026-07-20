@@ -12,7 +12,8 @@ Omnigent mimarisinden esinlenen capability modeli:
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
+from math import isfinite
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type
 
 
 class IntegrationMode(str, Enum):
@@ -55,8 +56,8 @@ class RuntimeCapabilities:
     name: str
     integration_mode: IntegrationMode = IntegrationMode.CLI_SUBPROCESS
     elicitation: Elicitation = Elicitation.NONE
-    model_families: List[ModelFamily] = field(default_factory=lambda: [ModelFamily.MULTI])
-    auth_methods: List[AuthMethod] = field(default_factory=lambda: [AuthMethod.API_KEY])
+    model_families: Tuple[ModelFamily, ...] = field(default_factory=lambda: (ModelFamily.MULTI,))
+    auth_methods: Tuple[AuthMethod, ...] = field(default_factory=lambda: (AuthMethod.API_KEY,))
 
     # Özellik flags
     has_builtin_agent: bool = False
@@ -75,6 +76,65 @@ class RuntimeCapabilities:
     max_context_window: int = 128000
     setup_time_seconds: int = 0
     cost_per_research_usd: float = 0.13
+
+    def __post_init__(self) -> None:
+        """Reject invalid declarations before they affect runtime selection or display."""
+        if not isinstance(self.name, str) or not self.name.strip():
+            raise ValueError("Runtime capability name must be a non-empty string.")
+        if not isinstance(self.integration_mode, IntegrationMode):
+            raise TypeError("integration_mode must be an IntegrationMode.")
+        if not isinstance(self.elicitation, Elicitation):
+            raise TypeError("elicitation must be an Elicitation.")
+
+        object.__setattr__(
+            self, "model_families", self._validated_enum_tuple(
+                self.model_families, ModelFamily, "model_families"
+            )
+        )
+        object.__setattr__(
+            self, "auth_methods", self._validated_enum_tuple(
+                self.auth_methods, AuthMethod, "auth_methods"
+            )
+        )
+
+        for field_name in (
+            "has_builtin_agent", "has_builtin_parallel", "has_builtin_web_search",
+            "has_builtin_web_fetch", "has_mcp_support", "has_policy_hooks",
+            "has_collaboration", "has_cloud_sandbox", "has_web_ui", "has_mobile",
+        ):
+            if not isinstance(getattr(self, field_name), bool):
+                raise TypeError(f"{field_name} must be a bool.")
+
+        for field_name, minimum in (
+            ("max_parallel_agents", 1),
+            ("max_context_window", 1),
+            ("setup_time_seconds", 0),
+        ):
+            value = getattr(self, field_name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+                raise ValueError(f"{field_name} must be an integer >= {minimum}.")
+
+        if (isinstance(self.cost_per_research_usd, bool)
+                or not isinstance(self.cost_per_research_usd, (int, float))
+                or not isfinite(self.cost_per_research_usd)
+                or self.cost_per_research_usd < 0):
+            raise ValueError("cost_per_research_usd must be a finite number >= 0.")
+
+    @staticmethod
+    def _validated_enum_tuple(values: Any, enum_type: Type[Enum], field_name: str) -> Tuple[Any, ...]:
+        if isinstance(values, (str, bytes)):
+            raise TypeError(f"{field_name} must be an iterable of {enum_type.__name__} values.")
+        try:
+            values = tuple(values)
+        except TypeError as exc:
+            raise TypeError(
+                f"{field_name} must be an iterable of {enum_type.__name__} values."
+            ) from exc
+        if not values:
+            raise ValueError(f"{field_name} must not be empty.")
+        if not all(isinstance(value, enum_type) for value in values):
+            raise TypeError(f"{field_name} must contain only {enum_type.__name__} values.")
+        return values
 
     def describe(self) -> str:
         """Platformun capability özeti."""

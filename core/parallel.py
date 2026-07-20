@@ -16,7 +16,8 @@ Usage:
 
 import os
 import sys
-import threading
+import traceback
+from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any, Callable, List
 
 
@@ -41,6 +42,9 @@ def pipeline(items: List[Any], fn: Callable[[Any], Any]) -> List[Any]:
     Returns:
         List of results (None results are included, filter with .filter(Boolean))
     """
+    if not callable(fn):
+        raise TypeError("fn must be callable")
+
     results = []
     total = len(items)
     for i, item in enumerate(items):
@@ -48,8 +52,8 @@ def pipeline(items: List[Any], fn: Callable[[Any], Any]) -> List[Any]:
         try:
             result = fn(item)
             results.append(result)
-        except Exception as e:
-            print(f"  pipeline error on item {i}: {e}", file=sys.stderr)
+        except Exception as exc:
+            _log_failure("pipeline", i, exc)
             results.append(None)
     return results
 
@@ -65,59 +69,53 @@ def parallel(fn_list: List[Callable[[], Any]], max_workers: int = 5) -> List[Any
     Returns:
         List of results in the same order as fn_list
     """
+    _validate_max_workers(max_workers)
+    functions = list(fn_list)
+    for i, fn in enumerate(functions):
+        if not callable(fn):
+            raise TypeError(f"fn_list[{i}] must be callable")
+
     capability = _detect_capability()
 
     if capability == "claude":
         # Inside Claude Code, the JS wrapper intercepts parallel() calls
-        print("__CLAUDE_PARALLEL__:" + str(len(fn_list)), file=sys.stderr)
+        print("__CLAUDE_PARALLEL__:" + str(len(functions)), file=sys.stderr)
         # Fall through to threading for actual execution
-        return _threaded_parallel(fn_list, max_workers)
+        return _threaded_parallel(functions, max_workers)
 
     if capability == "hermes":
         # Hermes: first try using concurrent subagents
         # But for simple CPU-bound work, threading is fine
         pass
 
-    return _threaded_parallel(fn_list, max_workers)
+    return _threaded_parallel(functions, max_workers)
 
 
 def _threaded_parallel(fn_list: List[Callable[[], Any]], max_workers: int = 5) -> List[Any]:
-    """Execute functions in a thread pool."""
+    """Execute functions with a bounded pool, keeping input order."""
+    if not fn_list:
+        return []
+
     results = [None] * len(fn_list)
-    errors = [None] * len(fn_list)
-    lock = threading.Lock()
-
-    def worker(idx: int, fn: Callable):
-        try:
-            result = fn()
-            with lock:
-                results[idx] = result
-        except Exception as e:
-            with lock:
-                errors[idx] = e
-
-    threads = []
-    total = len(fn_list)
-
-    for i, fn in enumerate(fn_list):
-        t = threading.Thread(target=worker, args=(i, fn), daemon=True)
-        threads.append(t)
-        t.start()
-
-        # Simple throttling: wait if we hit max_workers
-        if len([t for t in threads if t.is_alive()]) >= max_workers:
-            # Join one to free a slot
-            for t in threads:
-                if t.is_alive():
-                    t.join(timeout=0.1)
-                    break
-
-    for t in threads:
-        t.join()
-
-    # Log errors
-    for i, err in enumerate(errors):
-        if err:
-            print(f"  parallel worker {i} error: {err}", file=sys.stderr)
+    workers = min(max_workers, len(fn_list))
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="deep-dive") as executor:
+        futures: List[Future] = [executor.submit(fn) for fn in fn_list]
+        for i, future in enumerate(futures):
+            try:
+                results[i] = future.result()
+            except BaseException as exc:
+                # A worker must not take down the remaining work or hide its traceback.
+                _log_failure("parallel worker", i, exc)
 
     return results
+
+
+def _validate_max_workers(max_workers: int) -> None:
+    if isinstance(max_workers, bool) or not isinstance(max_workers, int) or max_workers < 1:
+        raise ValueError("max_workers must be a positive integer")
+
+
+def _log_failure(operation: str, index: int, exc: BaseException) -> None:
+    """Report an isolated task failure without interrupting sibling tasks."""
+    print(f"  {operation} {index} error: {type(exc).__name__}: {exc}", file=sys.stderr)
+    traceback.print_exception(type(exc), exc, exc.__traceback__, file=sys.stderr)
