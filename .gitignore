@@ -11,5 +11,7 @@ build/
 .mypy_cache/
 .ruff_cache/
 .claude/
+.codex/
+.agents/
 .browser-sessions/
 deep-research-*.json
