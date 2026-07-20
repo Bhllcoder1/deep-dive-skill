@@ -16,6 +16,10 @@ For OpenAI Build Week, [OpenAI Codex](https://openai.com/index/introducing-codex
 
 Per instructions given to every session: no cosmetic-only rewrites, no public CLI/API signature changes unless a real bug required it (none did — `deep_research()`, `agent()`, `search()`, `fetch()`, `run()` all kept their original signatures), and the multi-platform runtime architecture was left intact.
 
+## New platform adapters
+
+A second Codex pass (same file-by-file, one-session-per-file pattern, using `runtime/codex.py` as the shared template) added eight new platform runtime adapters: `cursor.py`, `gemini.py`, `copilot.py`, `amazon_q.py`, `windsurf.py`, `kimi.py`, `glm.py`, `minimax.py`. Each one detects that platform's local CLI (via an env var override or `PATH` lookup — `gemini`, `q`, `cursor-agent`, `kimi`/`~/.kimi-code/bin/kimi`, `glm`/`zai`, `minimax`, a standalone `copilot` binary or `gh copilot`, `windsurf`), shells the research prompt to it on stdin, and parses JSON from its output — falling back cleanly to the generic DeepSeek API path if no CLI is found or the call fails. On the machine this ran on, three of the eight (`gemini`, `copilot` via `gh`, `kimi`) detected and used real local CLIs during testing, not just the fallback path. Wiring into `runtime/__init__.py`'s registry/auto-detect and `harness.py`'s runtime allowlist was done by hand afterward — see `CODEX_CHANGES/runtime_*.md` for each adapter's note.
+
 ## Validation
 
 Every touched file passes `python3 -m py_compile`; the full pipeline was smoke-tested end-to-end via `harness.py` (`Scope -> Search -> Fetch -> Verify -> Synthesize`) after the changes, confirming clean imports and graceful structured-error handling on a live API failure.

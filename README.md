@@ -47,10 +47,18 @@ python3 harness.py "Compare Storj vs Filebase decentralized storage"
 | Claude Code | ✅ | ✅ parallel() | ✅ WebSearch | ✅ Active |
 | Generic (Python) | ✅ | ✅ threading | ✅ DDG/Google/curl | ✅ Active |
 | Aider | ⚠️ Manual | ⚠️ Sequential | ❌ (uses generic) | 🟡 Beta |
-| Codex CLI | ⚠️ Manual | ⚠️ Sequential | ❌ (uses generic) | 🟡 Beta |
+| Codex CLI | ✅ local CLI, else generic | ⚠️ Sequential | ❌ (uses generic) | 🟢 Active |
+| Cursor Agent | ✅ local CLI, else generic | ⚠️ Sequential | ❌ (uses generic) | 🟢 Active |
+| Gemini CLI | ✅ local CLI, else generic | ⚠️ Sequential | ❌ (uses generic) | 🟢 Active |
+| GitHub Copilot Agent | ✅ local CLI, else generic | ⚠️ Sequential | ❌ (uses generic) | 🟢 Active |
+| Amazon Q Developer | ✅ local CLI, else generic | ⚠️ Sequential | ❌ (uses generic) | 🟢 Active |
+| Windsurf | ⚠️ local CLI if present, else generic | ⚠️ Sequential | ❌ (uses generic) | 🟢 Active |
+| Kimi Code | ✅ local CLI, else generic | ⚠️ Sequential | ❌ (uses generic) | 🟢 Active |
+| GLM Code (Z.ai) | ✅ local CLI, else generic | ⚠️ Sequential | ❌ (uses generic) | 🟢 Active |
+| MiniMax Code | ✅ local CLI, else generic | ⚠️ Sequential | ❌ (uses generic) | 🟢 Active |
+| Cline/Roo | ⚠️ Manual | ⚠️ Sequential | ❌ (uses generic) | 🟡 Beta |
 | OpenClaw | 🚧 | 🚧 | 🚧 | 🔄 Planned |
-| Cline/Roo | 🚧 | 🚧 | 🚧 | 🔄 Planned |
-| Chat platforms (ChatGPT, GLM) | ❌ N/A | ❌ N/A | ❌ N/A | ⬜ Not applicable |
+| Chat platforms (ChatGPT) | ❌ N/A | ❌ N/A | ❌ N/A | ⬜ Not applicable |
 
 > **Not:** Claude Code'un `parallel()`, `WebSearch`, `agent()` built-in fonksiyonları Claude Pro/Enterprise üyeliği gerektirir.
 > Üyeliği olmayanlar otomatik olarak `generic` runtime'a düşer (Python threading + DeepSeek API ile paralel çalışır, ücretsiz).
@@ -111,7 +119,8 @@ from a tier and tweak just one knob (e.g. `--tier medium --votes 3`).
 | `DEEPSEEK_API_KEY` | — | **Required.** DeepSeek API key |
 | `LLM_API_BASE` | https://api.deepseek.com/v1 | API base URL (OpenAI-compatible) |
 | `LLM_MODEL` | deepseek-chat | Model name |
-| `DR_RUNTIME` | auto | Force runtime: hermes, claude_code, generic |
+| `DR_RUNTIME` | auto | Force runtime: hermes, claude_code, generic, aider, codex, cline, cursor, gemini, copilot, amazon_q, windsurf, kimi, glm, minimax |
+| `CURSOR_CLI` / `GEMINI_CLI` / `COPILOT_CLI` / `AMAZON_Q_CLI` / `WINDSURF_CLI` / `KIMI_CLI` / `GLM_CLI` / `MINIMAX_CLI` / `CODEX_CLI` | — | Path/command override for that platform's local CLI binary; auto-detected via `PATH` if unset |
 | `DR_COST_TIER` | high | Cost tier: low, medium, high, ultra (see above) |
 | `DR_ANGLES` | *(tier)* | Number of parallel search angles in Scope phase |
 | `DR_MAX_FETCH` | *(tier)* | Max URLs to fetch |
@@ -159,7 +168,11 @@ runtime/
   hermes.py                         ← Hermes Agent adapter
   claude_code.py                    ← Claude Code adapter (stdout markers)
   generic.py                        ← Generic Python adapter (requests/curl)
-  aider.py / codex.py / cline.py    ← Beta adapters for other CLIs
+  aider.py / cline.py                ← Beta adapters (generic fallback only)
+  codex.py / cursor.py / gemini.py   ← Local-CLI adapters (shell out if the
+  copilot.py / amazon_q.py           ← platform's own CLI is on PATH, else
+  windsurf.py / kimi.py / glm.py     ← fall back to the generic API path)
+  minimax.py
   adapters/                         ← Platform-specific integrations
 panel.sh                            ← Control panel launcher
 ```

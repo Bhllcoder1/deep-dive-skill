@@ -29,7 +29,7 @@ from .base import BaseRuntime
 def detect() -> str:
     """
     Platformu otomatik algılar.
-    
+
     Sırasıyla:
     1. DR_RUNTIME environment variable (force)
     2. HERMES_AGENT
@@ -38,7 +38,15 @@ def detect() -> str:
     5. OPENCLAW_MODE
     6. CODEX_CLI
     7. CLINE_MCP
-    8. generic (fallback)
+    8. CURSOR_CLI
+    9. GEMINI_CLI
+    10. COPILOT_CLI
+    11. AMAZON_Q_CLI
+    12. WINDSURF_CLI
+    13. KIMI_CLI
+    14. GLM_CLI
+    15. MINIMAX_CLI
+    16. generic (fallback)
     """
     force = os.environ.get("DR_RUNTIME", "auto")
     if force and force != "auto":
@@ -56,6 +64,22 @@ def detect() -> str:
         return "codex"
     if os.environ.get("CLINE_MCP"):
         return "cline"
+    if os.environ.get("CURSOR_CLI"):
+        return "cursor"
+    if os.environ.get("GEMINI_CLI"):
+        return "gemini"
+    if os.environ.get("COPILOT_CLI"):
+        return "copilot"
+    if os.environ.get("AMAZON_Q_CLI"):
+        return "amazon_q"
+    if os.environ.get("WINDSURF_CLI"):
+        return "windsurf"
+    if os.environ.get("KIMI_CLI"):
+        return "kimi"
+    if os.environ.get("GLM_CLI"):
+        return "glm"
+    if os.environ.get("MINIMAX_CLI"):
+        return "minimax"
 
     return "generic"
 
@@ -98,6 +122,30 @@ def get_runtime(runtime_name: Optional[str] = None) -> BaseRuntime:
     elif name == "cline":
         from .cline import ClineRuntime
         return ClineRuntime()
+    elif name == "cursor":
+        from .cursor import CursorRuntime
+        return CursorRuntime()
+    elif name == "gemini":
+        from .gemini import GeminiRuntime
+        return GeminiRuntime()
+    elif name == "copilot":
+        from .copilot import CopilotRuntime
+        return CopilotRuntime()
+    elif name == "amazon_q":
+        from .amazon_q import AmazonQRuntime
+        return AmazonQRuntime()
+    elif name == "windsurf":
+        from .windsurf import WindsurfRuntime
+        return WindsurfRuntime()
+    elif name == "kimi":
+        from .kimi import KimiRuntime
+        return KimiRuntime()
+    elif name == "glm":
+        from .glm import GLMRuntime
+        return GLMRuntime()
+    elif name == "minimax":
+        from .minimax import MiniMaxRuntime
+        return MiniMaxRuntime()
     else:
         from .generic import GenericRuntime
         return GenericRuntime()
@@ -110,5 +158,13 @@ register("generic", None)
 register("aider", None)
 register("codex", None)
 register("cline", None)
+register("cursor", None)
+register("gemini", None)
+register("copilot", None)
+register("amazon_q", None)
+register("windsurf", None)
+register("kimi", None)
+register("glm", None)
+register("minimax", None)
 
 __all__ = ["BaseRuntime", "get_runtime", "detect", "register"]

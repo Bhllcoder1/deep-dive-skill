@@ -24,7 +24,10 @@ _CONFIG_MAP = {
     "refutations_required": "DR_REFUTATIONS_REQUIRED",
     "max_workers": "DR_MAX_WORKERS",
 }
-_RUNTIMES = {"auto", "hermes", "claude_code", "generic", "aider", "codex", "cline"}
+_RUNTIMES = {
+    "auto", "hermes", "claude_code", "generic", "aider", "codex", "cline",
+    "cursor", "gemini", "copilot", "amazon_q", "windsurf", "kimi", "glm", "minimax",
+}
 _CONFIG_LOCK = threading.RLock()
 
 
