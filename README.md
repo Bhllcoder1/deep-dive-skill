@@ -1,5 +1,9 @@
 # Deep Dive Skill
 
+<p align="center">
+  <img src="assets/cover.png" alt="Deep Dive Skill" width="360">
+</p>
+
 **Deep Dive** is a universal, adversarially-verified deep research agent that runs as a portable *skill* on top of any AI coding/agent platform — Hermes, Claude Code, Aider, Codex CLI, Cline, or plain Python. Point it at a question; it comes back with a claim-by-claim, source-cited report where every claim has survived independent cross-examination before it's allowed into the final answer.
 
 ```
