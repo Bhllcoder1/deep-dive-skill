@@ -28,7 +28,7 @@ The pipeline in `core/` is shared across all runtimes. `runtime/` selects an ada
 
 ```bash
 # 1. Clone
-git clone https://github.com/Bhllcoder1/deep-dive-skill.git
+git clone https://github.com/YOUR_USERNAME/deep-dive-skill.git
 cd deep-dive-skill
 
 # 2. Set an API key for the generic fallback
