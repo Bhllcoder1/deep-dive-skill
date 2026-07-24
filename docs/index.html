@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Deep Dive Skill — Bhllcoder1</title>
+<title>Deep Dive Skill</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.1/github-markdown.min.css">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -21,7 +22,6 @@
     margin: 0 auto;
     width: 100%;
   }
-
   /* README panel */
   .readme-panel {
     flex: 1;
@@ -31,59 +31,40 @@
     max-height: 100vh;
     border-right: 1px solid #30363d;
   }
-  .readme-panel h1 { border-bottom: 1px solid #30363d; padding-bottom: 8px; }
-  .readme-panel h2 { border-bottom: 1px solid #21262d; padding-bottom: 6px; margin-top: 24px; }
-  .readme-panel h1, .readme-panel h2, .readme-panel h3, .readme-panel h4 { color: #f0f6fc; }
-  .readme-panel p { line-height: 1.7; margin: 12px 0; }
-  .readme-panel a { color: #58a6ff; text-decoration: none; }
-  .readme-panel a:hover { text-decoration: underline; }
-  .readme-panel code {
+  .readme-panel .markdown-body {
+    background: transparent;
+    color: #e6edf3;
+    max-width: 800px;
+  }
+  .readme-panel .markdown-body h1 { border-bottom-color: #30363d; }
+  .readme-panel .markdown-body h2 { border-bottom-color: #21262d; }
+  .readme-panel .markdown-body code {
     background: #161b22;
     color: #f0f6fc;
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-size: 13px;
-    font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
   }
-  .readme-panel pre {
-    background: #161b22;
-    border: 1px solid #30363d;
-    border-radius: 6px;
-    padding: 16px;
-    overflow-x: auto;
-    margin: 16px 0;
-  }
-  .readme-panel pre code {
+  .readme-panel .markdown-body pre code {
     background: transparent;
-    padding: 0;
-    border: none;
   }
-  .readme-panel table {
-    border-collapse: collapse;
-    width: 100%;
-    margin: 16px 0;
-    font-size: 14px;
+  .readme-panel .markdown-body table tr {
+    background: #0d1117;
+    border-color: #30363d;
   }
-  .readme-panel th, .readme-panel td {
-    border: 1px solid #30363d;
-    padding: 8px 12px;
-    text-align: left;
-  }
-  .readme-panel th {
+  .readme-panel .markdown-body table tr:nth-child(2n) {
     background: #161b22;
-    font-weight: 600;
   }
-  .readme-panel tr:nth-child(even) { background: #161b22; }
-  .readme-panel blockquote {
-    border-left: 4px solid #30363d;
-    padding-left: 16px;
+  .readme-panel .markdown-body img {
+    max-width: 360px;
+  }
+  .readme-panel .markdown-body a {
+    color: #58a6ff;
+  }
+  .readme-panel .markdown-body blockquote {
     color: #8b949e;
-    margin: 16px 0;
+    border-left-color: #30363d;
   }
-  .readme-panel hr { border: none; border-top: 1px solid #30363d; margin: 24px 0; }
-  .readme-panel img { max-width: 360px; border-radius: 6px; }
-  .readme-panel ul, .readme-panel ol { margin: 12px 0; padding-left: 24px; line-height: 1.7; }
-  .readme-panel li { margin: 4px 0; }
+  .readme-panel .markdown-body hr {
+    background: #30363d;
+  }
 
   /* Files panel */
   .files-panel {
@@ -93,6 +74,7 @@
     overflow-y: auto;
     max-height: 100vh;
     background: #0d1117;
+    border-left: 1px solid #30363d;
   }
   .files-panel h2 {
     font-size: 14px;
@@ -104,53 +86,86 @@
     text-transform: uppercase;
     letter-spacing: 0.04em;
   }
-  .repo-header {
-    font-size: 16px;
-    font-weight: 600;
-    margin-bottom: 20px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid #30363d;
+  .file-tree {
+    list-style: none;
   }
-  .repo-header a { color: #58a6ff; text-decoration: none; }
-  .repo-header a:hover { text-decoration: underline; }
-  .repo-header .meta { color: #8b949e; font-weight: 400; font-size: 13px; margin-top: 4px; }
-  details {
-    margin: 2px 0;
+  .file-tree li {
+    margin: 0;
   }
-  details summary {
-    cursor: pointer;
-    padding: 3px 0;
-    font-size: 13px;
+  .file-tree .folder {
     font-weight: 500;
     color: #d2d8e0;
+    padding: 3px 0;
+    cursor: pointer;
     user-select: none;
   }
-  details summary:hover { color: #e6edf3; }
-  details[open] > summary { color: #e6edf3; }
-  .badge {
+  .file-tree .folder::before {
+    content: "📁 ";
+  }
+  .file-tree .folder.open::before {
+    content: "📂 ";
+  }
+  .file-tree .file {
+    color: #8b949e;
+    padding: 2px 0 2px 20px;
+    font-size: 13px;
+    font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  }
+  .file-tree .file::before {
+    content: "📄 ";
+  }
+  .file-tree .file.py::before {
+    content: "🐍 ";
+  }
+  .file-tree .file.sh::before {
+    content: "⚡ ";
+  }
+  .file-tree .file.md::before {
+    content: "📝 ";
+  }
+  .file-tree .file.json::before {
+    content: "📋 ";
+  }
+  .file-tree .file.js::before {
+    content: "🟨 ";
+  }
+  .file-tree ul {
+    list-style: none;
+    padding-left: 16px;
+    display: none;
+  }
+  .file-tree ul.open {
+    display: block;
+  }
+  .file-tree .folder {
+    font-size: 13px;
+  }
+  .count-badge {
     font-size: 11px;
     color: #8b949e;
     margin-left: 6px;
     background: #21262d;
     padding: 0 6px;
     border-radius: 8px;
-    font-weight: 400;
   }
-  .file {
-    padding: 3px 0 3px 20px;
-    font-size: 13px;
-    font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  .repo-header {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    color: #e6edf3;
+  }
+  .repo-header a {
+    color: #58a6ff;
+    text-decoration: none;
+  }
+  .repo-header a:hover {
+    text-decoration: underline;
+  }
+  .repo-header .stars {
     color: #8b949e;
-    cursor: pointer;
-    transition: color 0.15s;
+    font-weight: 400;
+    font-size: 13px;
   }
-  .file:hover { color: #e6edf3; background: #161b22; border-radius: 3px; }
-  details > .file { padding-left: 36px; }
-  details details > .file { padding-left: 52px; }
-  details details details > .file { padding-left: 68px; }
-  .stats { color: #8b949e; font-size: 13px; }
-  .stats .num { color: #e6edf3; font-weight: 500; }
-
   @media (max-width: 900px) {
     .wrapper { flex-direction: column; }
     .readme-panel {
@@ -163,577 +178,167 @@
       width: 100%;
       min-width: 0;
       max-height: none;
+      border-left: none;
     }
   }
 </style>
 </head>
 <body>
+
 <div class="wrapper">
 
+  <!-- README (left) -->
   <main class="readme-panel">
-    <h1>Deep Dive Skill</h1>
-<p align="center">
-  <img src="https://raw.githubusercontent.com/Bhllcoder1/deep-dive-skill/main/assets/cover.png" alt="Deep Dive Skill" width="360">
-</p>
-
-<p align="center">
-  <img alt="License" src="https://img.shields.io/badge/license-MIT-blue.svg">
-  <img alt="Python" src="https://img.shields.io/badge/python-3.9%2B-blue.svg">
-  <img alt="Platforms" src="https://img.shields.io/badge/runtime%20adapters-15-brightgreen.svg">
-  <img alt="Dependencies" src="https://img.shields.io/badge/dependencies-zero%20(stdlib%20%2B%20curl)-lightgrey.svg">
-  <img alt="Built with Codex" src="https://img.shields.io/badge/hardened%20with-OpenAI%20Codex%20(GPT--5.6)-412991.svg">
-</p>
-
-<p><strong>Deep Dive</strong> is a universal, adversarially verified deep-research agent that runs as a portable <em>skill</em> on top of AI coding and agent platforms. Point it at a question; it returns a claim-by-claim, source-cited report where each accepted claim has survived independent cross-examination.</p>
-<div class="codehilite"><pre><span></span><code><span class="n">Pipeline</span><span class="o">:</span><span class="w"> </span><span class="n">Scope</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">Search</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">Fetch</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">Verify</span><span class="w"> </span><span class="o">(</span><span class="n">Adversarial</span><span class="o">)</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">Synthesize</span>
-</code></pre></div>
-
-<h2>Why it's different</h2>
-<p>Most research agents summarize the first few search results. Deep Dive treats extracted claims as guilty until proven otherwise: independent verifier calls try to refute each claim, and only claims with the required non-refutation support enter the final report. Ties, incomplete votes, malformed model output, and uncited findings remain unverified rather than being presented as facts.</p>
-<p>The pipeline in <code>core/</code> is shared across all runtimes. <code>runtime/</code> selects an adapter automatically or via <code>DR_RUNTIME</code>; the generic path uses an OpenAI-compatible API plus DuckDuckGo HTML search, optional Google Custom Search, or optional SearXNG.</p>
-<h2>Quick Start</h2>
-<div class="codehilite"><pre><span></span><code><span class="c1"># 1. Clone</span>
-git<span class="w"> </span>clone<span class="w"> </span>https://github.com/Bhllcoder1/deep-dive-skill.git
-<span class="nb">cd</span><span class="w"> </span>deep-dive-skill
-
-<span class="c1"># 2. Set an API key for the generic fallback</span>
-<span class="nb">export</span><span class="w"> </span><span class="nv">DEEPSEEK_API_KEY</span><span class="o">=</span><span class="s2">&quot;sk-...&quot;</span>
-
-<span class="c1"># 3. Run research</span>
-python3<span class="w"> </span>harness.py<span class="w"> </span><span class="s2">&quot;Compare Storj vs Filebase decentralized storage&quot;</span>
-</code></pre></div>
-
-<p><code>requests</code> is optional. Without it, the generic runtime uses <code>curl</code>; if neither is available, it reports the missing client instead of starting a partial run.</p>
-<h2>Features</h2>
-<ul>
-<li><strong>15 runtime adapters</strong> — Hermes, Claude Code, generic Python, Aider, Codex, Cline/Roo, Cursor, Gemini, GitHub Copilot, Amazon Q, Windsurf, Kimi, GLM, MiniMax, and Antigravity</li>
-<li><strong>Adversarial verification</strong> — verifier calls attempt to refute every selected claim; ties and incomplete support are not confirmed</li>
-<li><strong>Structured output</strong> — JSON or readable text reports with confidence, sources, refuted claims, unverified claims, caveats, and run statistics</li>
-<li><strong>Configurable scope and cost</strong> — tier presets plus bounded overrides for search angles, fetches, claims, votes, refutations, and concurrency</li>
-<li><strong>Safe fallbacks</strong> — malformed JSON, bad URLs, failed requests, and failed workers degrade to partial structured results rather than crashing the whole run</li>
-<li><strong>Live terminal dashboard</strong> — <code>panel.sh</code> launches the bundled dashboard</li>
-</ul>
-<h2>Platform Support</h2>
-<p>All 15 adapters are registered in <code>runtime/__init__.py</code>. The ten CLI adapters send each agent prompt to the local CLI on standard input, parse JSON from its output, and run those CLI calls in a bounded local worker pool; if the CLI is missing, fails, or returns invalid JSON, they fall back to <code>GenericRuntime</code>.</p>
-<table>
-<thead>
-<tr>
-<th>Platform</th>
-<th>Runtime name</th>
-<th>Selection</th>
-<th>Agent execution path</th>
-<th>Search/fetch path</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Hermes Agent</td>
-<td><code>hermes</code></td>
-<td><code>HERMES_AGENT</code> or <code>DR_RUNTIME=hermes</code></td>
-<td>Hermes runtime; no platform CLI shell-out</td>
-<td>Adapter HTTP/curl path</td>
-</tr>
-<tr>
-<td>Claude Code</td>
-<td><code>claude_code</code></td>
-<td><code>CLAUDE_CODE=1</code> or <code>DR_RUNTIME=claude_code</code></td>
-<td>Emits bridge markers, then uses the generic API fallback because the bundled bridge is request-only</td>
-<td>Emits bridge markers, then curl fallback</td>
-</tr>
-<tr>
-<td>Generic Python</td>
-<td><code>generic</code></td>
-<td>Default or <code>DR_RUNTIME=generic</code></td>
-<td>OpenAI-compatible API via <code>requests</code> or <code>curl</code></td>
-<td>DuckDuckGo HTML; optional Google Custom Search or SearXNG</td>
-</tr>
-<tr>
-<td>Aider</td>
-<td><code>aider</code></td>
-<td><code>AIDER_CHAT_MODE</code>/<code>AIDER_VERSION</code> or forced</td>
-<td><strong>Generic-only</strong> (<code>GenericRuntime</code>); no Aider CLI shell-out</td>
-<td>Generic search/fetch</td>
-</tr>
-<tr>
-<td>Codex CLI</td>
-<td><code>codex</code></td>
-<td><code>CODEX_CLI</code> or forced</td>
-<td>Local <code>codex</code> CLI, else generic fallback</td>
-<td>Generic search/fetch</td>
-</tr>
-<tr>
-<td>Cline / Roo Code</td>
-<td><code>cline</code></td>
-<td><code>CLINE_MCP</code> or forced</td>
-<td><strong>Generic-only</strong> (<code>GenericRuntime</code>); no Cline/Roo CLI shell-out</td>
-<td>Generic search/fetch; <code>MCP_WEB_SEARCH_URL</code> is only reported during setup</td>
-</tr>
-<tr>
-<td>Cursor Agent</td>
-<td><code>cursor</code></td>
-<td><code>CURSOR_CLI</code> or forced</td>
-<td>Local <code>cursor-agent</code> CLI, else generic fallback</td>
-<td>Generic search/fetch</td>
-</tr>
-<tr>
-<td>Gemini CLI</td>
-<td><code>gemini</code></td>
-<td><code>GEMINI_CLI</code> or forced</td>
-<td>Local <code>gemini</code> CLI, else generic fallback</td>
-<td>Generic search/fetch</td>
-</tr>
-<tr>
-<td>GitHub Copilot</td>
-<td><code>copilot</code></td>
-<td><code>COPILOT_CLI</code> or forced</td>
-<td>Local <code>copilot</code>, then <code>gh copilot</code>, else generic fallback</td>
-<td>Generic search/fetch</td>
-</tr>
-<tr>
-<td>Amazon Q Developer</td>
-<td><code>amazon_q</code></td>
-<td><code>AMAZON_Q_CLI</code> or forced</td>
-<td>Local <code>q</code> CLI, else generic fallback</td>
-<td>Generic search/fetch</td>
-</tr>
-<tr>
-<td>Windsurf</td>
-<td><code>windsurf</code></td>
-<td><code>WINDSURF_CLI</code> or forced</td>
-<td>Local <code>windsurf</code> CLI, else generic fallback</td>
-<td>Generic search/fetch</td>
-</tr>
-<tr>
-<td>Kimi Code</td>
-<td><code>kimi</code></td>
-<td><code>KIMI_CLI</code> or forced</td>
-<td>Local <code>kimi</code>, then <code>~/.kimi-code/bin/kimi</code>, else generic fallback</td>
-<td>Generic search/fetch</td>
-</tr>
-<tr>
-<td>GLM Code (Z.ai)</td>
-<td><code>glm</code></td>
-<td><code>GLM_CLI</code> or forced</td>
-<td>Local <code>glm</code>, then <code>zai</code>, else generic fallback</td>
-<td>Generic search/fetch</td>
-</tr>
-<tr>
-<td>MiniMax Code</td>
-<td><code>minimax</code></td>
-<td><code>MINIMAX_CLI</code> or forced</td>
-<td>Local <code>minimax</code> CLI, else generic fallback</td>
-<td>Generic search/fetch</td>
-</tr>
-<tr>
-<td>Google Antigravity CLI</td>
-<td><code>antigravity</code></td>
-<td><code>ANTIGRAVITY_CLI</code> or forced</td>
-<td>Local <code>antigravity</code> CLI, else generic fallback; its interactive <code>/agent</code> and <code>/agents</code> commands are not used</td>
-<td>Generic search/fetch</td>
-</tr>
-</tbody>
-</table>
-<p>All adapters expose bounded parallel work to the pipeline; <code>DR_MAX_WORKERS</code> controls the verifier concurrency and is hard-capped at 20.</p>
-<h2>CLI Usage</h2>
-<div class="codehilite"><pre><span></span><code><span class="c1"># Basic research</span>
-python3<span class="w"> </span>harness.py<span class="w"> </span><span class="s2">&quot;What are the pros and cons of Rust vs Go for CLI tools?&quot;</span>
-
-<span class="c1"># JSON report on stdout (progress goes to stderr)</span>
-python3<span class="w"> </span>harness.py<span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="w"> </span>--format<span class="w"> </span>json
-
-<span class="c1"># More thorough research</span>
-python3<span class="w"> </span>harness.py<span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="w"> </span>--max-fetch<span class="w"> </span><span class="m">20</span><span class="w"> </span>--max-claims<span class="w"> </span><span class="m">15</span><span class="w"> </span>--votes<span class="w"> </span><span class="m">3</span>
-
-<span class="c1"># Force a specific runtime</span>
-python3<span class="w"> </span>harness.py<span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="w"> </span>--runtime<span class="w"> </span>codex
-<span class="nv">DR_RUNTIME</span><span class="o">=</span>generic<span class="w"> </span>python3<span class="w"> </span>harness.py<span class="w"> </span><span class="s2">&quot;...&quot;</span>
-
-<span class="c1"># Save the report to a chosen file</span>
-python3<span class="w"> </span>harness.py<span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="w"> </span>--output<span class="w"> </span>my-report.json
-
-<span class="c1"># Live control panel</span>
-./panel.sh
-./panel.sh<span class="w"> </span><span class="s2">&quot;research question&quot;</span>
-</code></pre></div>
-
-<p>The Python API accepts the same <code>tier</code>, <code>angles</code>, <code>max_fetch</code>, <code>max_verify_claims</code>, <code>votes_per_claim</code>, <code>refutations_required</code>, and <code>max_workers</code> settings as keyword arguments. Each <code>deep_research()</code> call temporarily applies its settings and restores the process environment afterward.</p>
-<h2>Cost Tiers</h2>
-<p>Instead of tuning individual knobs, pick a tier. It bounds total agent calls so a run never silently spawns hundreds of agents:</p>
-<div class="codehilite"><pre><span></span><code>python3<span class="w"> </span>harness.py<span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="w"> </span>--tier<span class="w"> </span>low<span class="w">       </span><span class="c1"># quick sanity check</span>
-python3<span class="w"> </span>harness.py<span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="w"> </span>--tier<span class="w"> </span>medium<span class="w">    </span><span class="c1"># decent coverage, light verification</span>
-python3<span class="w"> </span>harness.py<span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="w"> </span>--tier<span class="w"> </span>high<span class="w">      </span><span class="c1"># default — thorough, adversarially verified</span>
-python3<span class="w"> </span>harness.py<span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="w"> </span>--tier<span class="w"> </span>ultra<span class="w">     </span><span class="c1"># deep, wide research</span>
-<span class="nv">DR_COST_TIER</span><span class="o">=</span>ultra<span class="w"> </span>python3<span class="w"> </span>harness.py<span class="w"> </span><span class="s2">&quot;...&quot;</span>
-</code></pre></div>
-
-<p>Total agent calls are approximately <code>2 (scope + synthesize) + angles + max_fetch + (max_verify_claims × votes_per_claim)</code>. <code>max_workers</code> separately caps concurrent verifier calls (hard ceiling: 20).</p>
-<table>
-<thead>
-<tr>
-<th>Tier</th>
-<th>Angles</th>
-<th>Max Fetch</th>
-<th>Max Verify Claims</th>
-<th>Votes/Claim</th>
-<th>Refutations Required</th>
-<th>Max Concurrent Workers</th>
-<th>~Agent Calls</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>low</code></td>
-<td>2</td>
-<td>3</td>
-<td>2</td>
-<td>1</td>
-<td>1</td>
-<td>2</td>
-<td>~9</td>
-</tr>
-<tr>
-<td><code>medium</code></td>
-<td>4</td>
-<td>8</td>
-<td>6</td>
-<td>2</td>
-<td>2</td>
-<td>4</td>
-<td>~26</td>
-</tr>
-<tr>
-<td><code>high</code> <em>(default)</em></td>
-<td>5</td>
-<td>15</td>
-<td>12</td>
-<td>2</td>
-<td>2</td>
-<td>6</td>
-<td>~46</td>
-</tr>
-<tr>
-<td><code>ultra</code></td>
-<td>10</td>
-<td>30</td>
-<td>35</td>
-<td>3</td>
-<td>2</td>
-<td>10</td>
-<td>~147</td>
-</tr>
-</tbody>
-</table>
-<p>Any individual <code>DR_*</code> setting below overrides its tier value, so you can start from a tier and adjust one bound (for example, <code>--tier medium --votes 3</code>). <code>DR_REFUTATIONS_REQUIRED</code> cannot exceed <code>DR_VOTES_PER_CLAIM</code>.</p>
-<h2>Environment Variables</h2>
-<table>
-<thead>
-<tr>
-<th>Variable</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>DEEPSEEK_API_KEY</code></td>
-<td>—</td>
-<td>Required by the generic fallback. The generic and Hermes runtimes also read an exact assignment from <code>~/.env</code>; Hermes additionally checks <code>~/.hermes/config.yaml</code>.</td>
-</tr>
-<tr>
-<td><code>LLM_API_BASE</code></td>
-<td><code>https://api.deepseek.com/v1</code></td>
-<td>OpenAI-compatible chat-completions base URL.</td>
-</tr>
-<tr>
-<td><code>LLM_MODEL</code></td>
-<td><code>deepseek-chat</code></td>
-<td>Model sent to the generic, Hermes, and Claude fallback API paths.</td>
-</tr>
-<tr>
-<td><code>DR_RUNTIME</code></td>
-<td><code>auto</code></td>
-<td>Force one of: <code>hermes</code>, <code>claude_code</code>, <code>generic</code>, <code>aider</code>, <code>codex</code>, <code>cline</code>, <code>cursor</code>, <code>gemini</code>, <code>copilot</code>, <code>amazon_q</code>, <code>windsurf</code>, <code>kimi</code>, <code>glm</code>, or <code>minimax</code>.</td>
-</tr>
-<tr>
-<td><code>DR_COST_TIER</code></td>
-<td><code>high</code></td>
-<td>Cost preset: <code>low</code>, <code>medium</code>, <code>high</code>, or <code>ultra</code>.</td>
-</tr>
-<tr>
-<td><code>DR_ANGLES</code></td>
-<td>tier value</td>
-<td>Number of search angles.</td>
-</tr>
-<tr>
-<td><code>DR_MAX_FETCH</code></td>
-<td>tier value</td>
-<td>Maximum URLs fetched and claim-extracted.</td>
-</tr>
-<tr>
-<td><code>DR_MAX_VERIFY_CLAIMS</code></td>
-<td>tier value</td>
-<td>Maximum claims sent to adversarial verification.</td>
-</tr>
-<tr>
-<td><code>DR_VOTES_PER_CLAIM</code></td>
-<td>tier value</td>
-<td>Independent verifier calls per selected claim.</td>
-</tr>
-<tr>
-<td><code>DR_REFUTATIONS_REQUIRED</code></td>
-<td>tier value</td>
-<td>Refutation/support threshold; cannot exceed <code>DR_VOTES_PER_CLAIM</code>.</td>
-</tr>
-<tr>
-<td><code>DR_MAX_WORKERS</code></td>
-<td>tier value</td>
-<td>Maximum concurrent verifier workers; hard-capped at 20.</td>
-</tr>
-<tr>
-<td><code>GOOGLE_API_KEY</code> + <code>GOOGLE_CX</code></td>
-<td>—</td>
-<td>Enable Google Custom Search when DuckDuckGo returns no results. Both are required.</td>
-</tr>
-<tr>
-<td><code>SearXNG_URL</code></td>
-<td>—</td>
-<td>HTTP(S) URL for a self-hosted SearXNG instance; the generic web helper falls back if it is unavailable.</td>
-</tr>
-<tr>
-<td><code>LLM_PROVIDER</code></td>
-<td><code>deepseek</code></td>
-<td>Dashboard/monitor provider selection.</td>
-</tr>
-<tr>
-<td><code>LLM_API_KEY</code></td>
-<td>—</td>
-<td>Explicit dashboard/monitor API key.</td>
-</tr>
-<tr>
-<td><code>OPENAI_API_KEY</code>, <code>ANTHROPIC_API_KEY</code>, <code>KIMI_API_KEY</code>, <code>QWEN_API_KEY</code>, <code>GEMINI_API_KEY</code>, <code>MINIMAX_API_KEY</code>, <code>ZHIPU_API_KEY</code></td>
-<td>—</td>
-<td>Provider-specific keys recognized by the dashboard/monitor when <code>LLM_PROVIDER</code> selects the corresponding provider. The generic pipeline runtime itself uses <code>DEEPSEEK_API_KEY</code>.</td>
-</tr>
-<tr>
-<td><code>MCP_WEB_SEARCH_URL</code></td>
-<td>—</td>
-<td>Reported by the Cline setup message only; it does not replace the generic search implementation.</td>
-</tr>
-</tbody>
-</table>
-<h3>Local CLI overrides</h3>
-<p>Every CLI-backed adapter accepts a command/path override. The value can be an executable path or a command resolvable on <code>PATH</code>; adapters otherwise try their built-in command names listed in the platform table.</p>
-<table>
-<thead>
-<tr>
-<th>Variable</th>
-<th>Adapter</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>CODEX_CLI</code></td>
-<td>Codex CLI</td>
-</tr>
-<tr>
-<td><code>CURSOR_CLI</code></td>
-<td>Cursor Agent</td>
-</tr>
-<tr>
-<td><code>GEMINI_CLI</code></td>
-<td>Gemini CLI</td>
-</tr>
-<tr>
-<td><code>COPILOT_CLI</code></td>
-<td>GitHub Copilot</td>
-</tr>
-<tr>
-<td><code>AMAZON_Q_CLI</code></td>
-<td>Amazon Q Developer</td>
-</tr>
-<tr>
-<td><code>WINDSURF_CLI</code></td>
-<td>Windsurf</td>
-</tr>
-<tr>
-<td><code>KIMI_CLI</code></td>
-<td>Kimi Code</td>
-</tr>
-<tr>
-<td><code>GLM_CLI</code></td>
-<td>GLM Code</td>
-</tr>
-<tr>
-<td><code>MINIMAX_CLI</code></td>
-<td>MiniMax Code</td>
-</tr>
-</tbody>
-</table>
-<p>Auto-detection also recognizes <code>HERMES_AGENT</code>, <code>CLAUDE_CODE=1</code>, <code>AIDER_CHAT_MODE</code> or <code>AIDER_VERSION</code>, and <code>CLINE_MCP</code>. <code>OPENCLAW_MODE</code> is recognized during detection but has no registered OpenClaw adapter, so it resolves to the generic runtime; use an explicitly supported <code>DR_RUNTIME</code> value instead.</p>
-<h2>Python API</h2>
-<div class="codehilite"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">harness</span><span class="w"> </span><span class="kn">import</span> <span class="n">deep_research</span><span class="p">,</span> <span class="n">print_report</span>
-
-<span class="n">result</span> <span class="o">=</span> <span class="n">deep_research</span><span class="p">(</span>
-    <span class="s2">&quot;Compare AWS S3 vs Backblaze B2 pricing and hidden fees&quot;</span><span class="p">,</span>
-    <span class="n">max_fetch</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span>
-    <span class="n">max_verify_claims</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span>
-    <span class="n">votes_per_claim</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
-<span class="p">)</span>
-
-<span class="n">print_report</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
-
-<span class="k">for</span> <span class="n">finding</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;findings&quot;</span><span class="p">,</span> <span class="p">[]):</span>
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">finding</span><span class="p">[</span><span class="s1">&#39;claim&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> — </span><span class="si">{</span><span class="n">finding</span><span class="p">[</span><span class="s1">&#39;confidence&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  Sources: </span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">finding</span><span class="p">[</span><span class="s1">&#39;sources&#39;</span><span class="p">])</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</code></pre></div>
-
-<h2>Architecture</h2>
-<div class="codehilite"><pre><span></span><code><span class="n">harness</span><span class="p">.</span><span class="n">py</span><span class="w">                          </span><span class="n">←</span><span class="w"> </span><span class="n">CLI</span><span class="w"> </span><span class="k">and</span><span class="w"> </span><span class="n">Python</span><span class="w"> </span><span class="n">API</span><span class="p">;</span><span class="w"> </span><span class="n">per</span><span class="o">-</span><span class="k">call</span><span class="w"> </span><span class="n">configuration</span><span class="w"> </span><span class="k">isolation</span>
-<span class="n">panel</span><span class="p">.</span><span class="n">sh</span><span class="w">                            </span><span class="n">←</span><span class="w"> </span><span class="n">Dashboard</span><span class="w"> </span><span class="n">launcher</span>
-<span class="n">assets</span><span class="o">/</span>
-<span class="w">  </span><span class="n">cover</span><span class="p">.</span><span class="n">png</span><span class="w">                         </span><span class="n">←</span><span class="w"> </span><span class="n">README</span><span class="w"> </span><span class="n">cover</span><span class="w"> </span><span class="n">image</span>
-<span class="n">core</span><span class="o">/</span>
-<span class="w">  </span><span class="n">__init__</span><span class="p">.</span><span class="n">py</span><span class="w">                       </span><span class="n">←</span><span class="w"> </span><span class="n">Public</span><span class="w"> </span><span class="n">core</span><span class="w"> </span><span class="n">exports</span>
-<span class="w">  </span><span class="n">agent</span><span class="p">.</span><span class="n">py</span><span class="w">                          </span><span class="n">←</span><span class="w"> </span><span class="n">Legacy</span><span class="w"> </span><span class="n">universal</span><span class="w"> </span><span class="n">LLM</span><span class="w"> </span><span class="n">helper</span><span class="w"> </span><span class="k">and</span><span class="w"> </span><span class="kt">JSON</span><span class="o">/</span><span class="k">schema</span><span class="w"> </span><span class="n">boundary</span>
-<span class="w">  </span><span class="n">dashboard</span><span class="p">.</span><span class="n">py</span><span class="w">                      </span><span class="n">←</span><span class="w"> </span><span class="n">Terminal</span><span class="w"> </span><span class="n">dashboard</span><span class="p">,</span><span class="w"> </span><span class="n">controller</span><span class="p">,</span><span class="w"> </span><span class="k">and</span><span class="w"> </span><span class="n">run</span><span class="w"> </span><span class="k">history</span>
-<span class="w">  </span><span class="k">engine</span><span class="p">.</span><span class="n">py</span><span class="w">                         </span><span class="n">←</span><span class="w"> </span><span class="n">Scope</span><span class="w"> </span><span class="n">→</span><span class="w"> </span><span class="n">Search</span><span class="w"> </span><span class="n">→</span><span class="w"> </span><span class="k">Fetch</span><span class="w"> </span><span class="n">→</span><span class="w"> </span><span class="n">Verify</span><span class="w"> </span><span class="n">→</span><span class="w"> </span><span class="n">Synthesize</span><span class="w"> </span><span class="n">pipeline</span>
-<span class="w">  </span><span class="n">monitor</span><span class="p">.</span><span class="n">py</span><span class="w">                        </span><span class="n">←</span><span class="w"> </span><span class="n">Thread</span><span class="o">-</span><span class="n">safe</span><span class="w"> </span><span class="k">phase</span><span class="o">/</span><span class="n">agent</span><span class="w"> </span><span class="n">monitoring</span><span class="w"> </span><span class="k">and</span><span class="w"> </span><span class="n">cost</span><span class="w"> </span><span class="n">reporting</span>
-<span class="w">  </span><span class="n">parallel</span><span class="p">.</span><span class="n">py</span><span class="w">                       </span><span class="n">←</span><span class="w"> </span><span class="n">Bounded</span><span class="w"> </span><span class="n">pipeline</span><span class="o">/</span><span class="n">parallel</span><span class="w"> </span><span class="n">helper</span><span class="w"> </span><span class="n">functions</span>
-<span class="w">  </span><span class="k">schemas</span><span class="p">.</span><span class="n">py</span><span class="w">                        </span><span class="n">←</span><span class="w"> </span><span class="n">Structured</span><span class="o">-</span><span class="n">output</span><span class="w"> </span><span class="k">schemas</span>
-<span class="w">  </span><span class="n">tiers</span><span class="p">.</span><span class="n">py</span><span class="w">                          </span><span class="n">←</span><span class="w"> </span><span class="n">Cost</span><span class="o">-</span><span class="n">tier</span><span class="w"> </span><span class="n">presets</span><span class="w"> </span><span class="k">and</span><span class="w"> </span><span class="n">worker</span><span class="w"> </span><span class="n">ceiling</span>
-<span class="w">  </span><span class="n">web</span><span class="p">.</span><span class="n">py</span><span class="w">                            </span><span class="n">←</span><span class="w"> </span><span class="n">Portable</span><span class="w"> </span><span class="n">search</span><span class="w"> </span><span class="k">and</span><span class="w"> </span><span class="n">bounded</span><span class="w"> </span><span class="n">HTTP</span><span class="p">(</span><span class="n">S</span><span class="p">)</span><span class="w"> </span><span class="k">fetch</span><span class="w"> </span><span class="n">helpers</span>
-<span class="n">runtime</span><span class="o">/</span>
-<span class="w">  </span><span class="n">__init__</span><span class="p">.</span><span class="n">py</span><span class="w">                       </span><span class="n">←</span><span class="w"> </span><span class="n">Runtime</span><span class="w"> </span><span class="n">registry</span><span class="p">,</span><span class="w"> </span><span class="n">detection</span><span class="p">,</span><span class="w"> </span><span class="k">and</span><span class="w"> </span><span class="n">factory</span>
-<span class="w">  </span><span class="n">base</span><span class="p">.</span><span class="n">py</span><span class="w">                           </span><span class="n">←</span><span class="w"> </span><span class="n">Runtime</span><span class="w"> </span><span class="n">interface</span><span class="w"> </span><span class="k">and</span><span class="w"> </span><span class="n">capability</span><span class="w"> </span><span class="k">types</span>
-<span class="w">  </span><span class="n">hermes</span><span class="p">.</span><span class="n">py</span><span class="w">                         </span><span class="n">←</span><span class="w"> </span><span class="n">Hermes</span><span class="w"> </span><span class="n">runtime</span>
-<span class="w">  </span><span class="n">claude_code</span><span class="p">.</span><span class="n">py</span><span class="w">                    </span><span class="n">←</span><span class="w"> </span><span class="n">Claude</span><span class="w"> </span><span class="n">bridge</span><span class="w"> </span><span class="n">markers</span><span class="w"> </span><span class="n">plus</span><span class="w"> </span><span class="n">generic</span><span class="w"> </span><span class="n">fallback</span>
-<span class="w">  </span><span class="n">generic</span><span class="p">.</span><span class="n">py</span><span class="w">                        </span><span class="n">←</span><span class="w"> </span><span class="n">OpenAI</span><span class="o">-</span><span class="n">compatible</span><span class="w"> </span><span class="n">API</span><span class="w"> </span><span class="k">and</span><span class="w"> </span><span class="n">web</span><span class="w"> </span><span class="n">fallback</span><span class="w"> </span><span class="n">runtime</span>
-<span class="w">  </span><span class="n">aider</span><span class="p">.</span><span class="n">py</span><span class="w">                          </span><span class="n">←</span><span class="w"> </span><span class="n">Aider</span><span class="o">-</span><span class="n">named</span><span class="w"> </span><span class="n">generic</span><span class="o">-</span><span class="k">only</span><span class="w"> </span><span class="n">adapter</span>
-<span class="w">  </span><span class="n">cline</span><span class="p">.</span><span class="n">py</span><span class="w">                          </span><span class="n">←</span><span class="w"> </span><span class="n">Cline</span><span class="o">/</span><span class="n">Roo</span><span class="o">-</span><span class="n">named</span><span class="w"> </span><span class="n">generic</span><span class="o">-</span><span class="k">only</span><span class="w"> </span><span class="n">adapter</span>
-<span class="w">  </span><span class="n">codex</span><span class="p">.</span><span class="n">py</span><span class="w">                          </span><span class="n">←</span><span class="w"> </span><span class="n">Codex</span><span class="w"> </span><span class="n">CLI</span><span class="w"> </span><span class="n">adapter</span>
-<span class="w">  </span><span class="k">cursor</span><span class="p">.</span><span class="n">py</span><span class="w">                         </span><span class="n">←</span><span class="w"> </span><span class="k">Cursor</span><span class="w"> </span><span class="n">Agent</span><span class="w"> </span><span class="n">CLI</span><span class="w"> </span><span class="n">adapter</span>
-<span class="w">  </span><span class="n">gemini</span><span class="p">.</span><span class="n">py</span><span class="w">                         </span><span class="n">←</span><span class="w"> </span><span class="n">Gemini</span><span class="w"> </span><span class="n">CLI</span><span class="w"> </span><span class="n">adapter</span>
-<span class="w">  </span><span class="n">copilot</span><span class="p">.</span><span class="n">py</span><span class="w">                        </span><span class="n">←</span><span class="w"> </span><span class="n">Copilot</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">gh</span><span class="w"> </span><span class="n">copilot</span><span class="w"> </span><span class="n">adapter</span>
-<span class="w">  </span><span class="n">amazon_q</span><span class="p">.</span><span class="n">py</span><span class="w">                       </span><span class="n">←</span><span class="w"> </span><span class="n">Amazon</span><span class="w"> </span><span class="n">Q</span><span class="w"> </span><span class="n n-Quoted">`q`</span><span class="w"> </span><span class="n">CLI</span><span class="w"> </span><span class="n">adapter</span>
-<span class="w">  </span><span class="n">windsurf</span><span class="p">.</span><span class="n">py</span><span class="w">                       </span><span class="n">←</span><span class="w"> </span><span class="n">Windsurf</span><span class="w"> </span><span class="n">CLI</span><span class="w"> </span><span class="n">adapter</span>
-<span class="w">  </span><span class="n">kimi</span><span class="p">.</span><span class="n">py</span><span class="w">                           </span><span class="n">←</span><span class="w"> </span><span class="n">Kimi</span><span class="w"> </span><span class="n">CLI</span><span class="w"> </span><span class="n">adapter</span>
-<span class="w">  </span><span class="n">glm</span><span class="p">.</span><span class="n">py</span><span class="w">                            </span><span class="n">←</span><span class="w"> </span><span class="n">GLM</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">zai</span><span class="w"> </span><span class="n">CLI</span><span class="w"> </span><span class="n">adapter</span>
-<span class="w">  </span><span class="n">minimax</span><span class="p">.</span><span class="n">py</span><span class="w">                        </span><span class="n">←</span><span class="w"> </span><span class="n">MiniMax</span><span class="w"> </span><span class="n">CLI</span><span class="w"> </span><span class="n">adapter</span>
-<span class="w">  </span><span class="n">adapters</span><span class="o">/</span>
-<span class="w">    </span><span class="n">claude</span><span class="o">-</span><span class="k">code</span><span class="o">-</span><span class="n">workflow</span><span class="p">.</span><span class="n">js</span><span class="w">         </span><span class="n">←</span><span class="w"> </span><span class="n">Standalone</span><span class="w"> </span><span class="n">Claude</span><span class="w"> </span><span class="k">Code</span><span class="w"> </span><span class="n">workflow</span><span class="w"> </span><span class="n">implementation</span>
-<span class="w">    </span><span class="n">claude</span><span class="o">-</span><span class="k">code</span><span class="o">-</span><span class="k">wrapper</span><span class="p">.</span><span class="n">js</span><span class="w">          </span><span class="n">←</span><span class="w"> </span><span class="n">Node</span><span class="w"> </span><span class="k">wrapper</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">Python</span><span class="w"> </span><span class="n">harness</span><span class="w"> </span><span class="n">bridge</span>
-<span class="n">CODEX_CHANGES</span><span class="p">.</span><span class="n">md</span><span class="w">                    </span><span class="n">←</span><span class="w"> </span><span class="n">Codex</span><span class="w"> </span><span class="n">hardening</span><span class="w"> </span><span class="k">and</span><span class="w"> </span><span class="n">adapter</span><span class="o">-</span><span class="n">extension</span><span class="w"> </span><span class="n">summary</span>
-<span class="n">CODEX_CHANGES</span><span class="o">/</span><span class="w">                      </span><span class="n">←</span><span class="w"> </span><span class="n">Per</span><span class="o">-</span><span class="n">module</span><span class="w"> </span><span class="n">hardening</span><span class="w"> </span><span class="n">notes</span>
-</code></pre></div>
-
-<h2>How It Works</h2>
-<ol>
-<li><strong>Scope</strong> — the LLM decomposes the question into complementary search angles.</li>
-<li><strong>Search</strong> — each angle is searched and results are normalized and deduplicated.</li>
-<li><strong>Fetch</strong> — bounded public HTTP(S) sources are fetched; the model extracts quoted, source-linked claims.</li>
-<li><strong>Verify</strong> — independent verifier calls try to refute selected claims. A claim survives only when it has enough non-refutation support; ties and failed votes stay unverified.</li>
-<li><strong>Synthesize</strong> — only surviving, source-cited claims are merged into the final report.</li>
-</ol>
-<h2>Codex Hardening and Extension</h2>
-<p>This project was hardened and extended with OpenAI Codex (GPT-5.6). <a href="https://github.com/Bhllcoder1/deep-dive-skill/tree/main/CODEX_CHANGES.md"><code>CODEX_CHANGES.md</code></a> summarizes the reliability and security work, including bounded concurrency, strict JSON and schema handling, safe fetch behavior, per-call configuration isolation, and the platform-adapter expansion. <a href="https://github.com/Bhllcoder1/deep-dive-skill/tree/main/CODEX_CHANGES/"><code>CODEX_CHANGES/</code></a> contains the concise per-module notes.</p>
-<h2>License</h2>
-<p>MIT</p>
+    <div class="markdown-body" id="readme-content">
+      <div style="text-align:center;padding:40px 0;">
+        <div class="spinner" style="border:3px solid #30363d;border-top:3px solid #58a6ff;border-radius:50%;width:32px;height:32px;animation:spin 1s linear infinite;margin:0 auto;"></div>
+        <p style="color:#8b949e;margin-top:12px;">Loading README...</p>
+      </div>
+    </div>
   </main>
 
+  <!-- File tree (right) -->
   <aside class="files-panel">
     <div class="repo-header">
       <a href="https://github.com/Bhllcoder1/deep-dive-skill">Bhllcoder1/deep-dive-skill</a>
-      <div class="meta" id="gh-meta">★ loading...</div>
+      <span class="stars" id="star-count">★ ...</span>
     </div>
 
     <h2>📦 Repository Files</h2>
-    <div class="file-tree">
-      <details open><summary class="folder">📁 CODEX_CHANGES <span class="badge">20 files</span></summary>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/CODEX_CHANGES/agent.md','_blank')" title="Open on GitHub">📝 agent.md</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/CODEX_CHANGES/antigravity_and_delegation.md','_blank')" title="Open on GitHub">📝 antigravity_and_delegation.md</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/CODEX_CHANGES/engine.md','_blank')" title="Open on GitHub">📝 engine.md</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/CODEX_CHANGES/harness.md','_blank')" title="Open on GitHub">📝 harness.md</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/CODEX_CHANGES/monitor.md','_blank')" title="Open on GitHub">📝 monitor.md</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/CODEX_CHANGES/parallel.md','_blank')" title="Open on GitHub">📝 parallel.md</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/CODEX_CHANGES/readme_and_cleanup.md','_blank')" title="Open on GitHub">📝 readme_and_cleanup.md</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/CODEX_CHANGES/runtime_amazon_q.md','_blank')" title="Open on GitHub">📝 runtime_amazon_q.md</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/CODEX_CHANGES/runtime_base.md','_blank')" title="Open on GitHub">📝 runtime_base.md</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/CODEX_CHANGES/runtime_claude_code.md','_blank')" title="Open on GitHub">📝 runtime_claude_code.md</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/CODEX_CHANGES/runtime_copilot.md','_blank')" title="Open on GitHub">📝 runtime_copilot.md</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/CODEX_CHANGES/runtime_cursor.md','_blank')" title="Open on GitHub">📝 runtime_cursor.md</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/CODEX_CHANGES/runtime_gemini.md','_blank')" title="Open on GitHub">📝 runtime_gemini.md</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/CODEX_CHANGES/runtime_generic.md','_blank')" title="Open on GitHub">📝 runtime_generic.md</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/CODEX_CHANGES/runtime_glm.md','_blank')" title="Open on GitHub">📝 runtime_glm.md</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/CODEX_CHANGES/runtime_hermes.md','_blank')" title="Open on GitHub">📝 runtime_hermes.md</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/CODEX_CHANGES/runtime_kimi.md','_blank')" title="Open on GitHub">📝 runtime_kimi.md</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/CODEX_CHANGES/runtime_minimax.md','_blank')" title="Open on GitHub">📝 runtime_minimax.md</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/CODEX_CHANGES/runtime_windsurf.md','_blank')" title="Open on GitHub">📝 runtime_windsurf.md</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/CODEX_CHANGES/web.md','_blank')" title="Open on GitHub">📝 web.md</div>
-          </details>
-          <details open><summary class="folder">📁 assets <span class="badge">1 files</span></summary>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/assets/cover.png','_blank')" title="Open on GitHub">🖼️ cover.png</div>
-          </details>
-          <details open><summary class="folder">📁 core <span class="badge">9 files</span></summary>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/core/__init__.py','_blank')" title="Open on GitHub">🐍 __init__.py</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/core/agent.py','_blank')" title="Open on GitHub">🐍 agent.py</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/core/dashboard.py','_blank')" title="Open on GitHub">🐍 dashboard.py</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/core/engine.py','_blank')" title="Open on GitHub">🐍 engine.py</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/core/monitor.py','_blank')" title="Open on GitHub">🐍 monitor.py</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/core/parallel.py','_blank')" title="Open on GitHub">🐍 parallel.py</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/core/schemas.py','_blank')" title="Open on GitHub">🐍 schemas.py</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/core/tiers.py','_blank')" title="Open on GitHub">🐍 tiers.py</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/core/web.py','_blank')" title="Open on GitHub">🐍 web.py</div>
-          </details>
-          <details open><summary class="folder">📁 docs <span class="badge">1 files</span></summary>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/docs/index.html','_blank')" title="Open on GitHub">🌐 index.html</div>
-          </details>
-          <details open><summary class="folder">📁 runtime <span class="badge">18 files, 1 dirs</span></summary>
-            <details open><summary class="folder">📁 adapters <span class="badge">2 files</span></summary>
-              <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/runtime/adapters/claude-code-workflow.js','_blank')" title="Open on GitHub">🟨 claude-code-workflow.js</div>
-              <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/runtime/adapters/claude-code-wrapper.js','_blank')" title="Open on GitHub">🟨 claude-code-wrapper.js</div>
-            </details>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/runtime/__init__.py','_blank')" title="Open on GitHub">🐍 __init__.py</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/runtime/_cli_parallel.py','_blank')" title="Open on GitHub">🐍 _cli_parallel.py</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/runtime/aider.py','_blank')" title="Open on GitHub">🐍 aider.py</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/runtime/amazon_q.py','_blank')" title="Open on GitHub">🐍 amazon_q.py</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/runtime/antigravity.py','_blank')" title="Open on GitHub">🐍 antigravity.py</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/runtime/base.py','_blank')" title="Open on GitHub">🐍 base.py</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/runtime/claude_code.py','_blank')" title="Open on GitHub">🐍 claude_code.py</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/runtime/cline.py','_blank')" title="Open on GitHub">🐍 cline.py</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/runtime/codex.py','_blank')" title="Open on GitHub">🐍 codex.py</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/runtime/copilot.py','_blank')" title="Open on GitHub">🐍 copilot.py</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/runtime/cursor.py','_blank')" title="Open on GitHub">🐍 cursor.py</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/runtime/gemini.py','_blank')" title="Open on GitHub">🐍 gemini.py</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/runtime/generic.py','_blank')" title="Open on GitHub">🐍 generic.py</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/runtime/glm.py','_blank')" title="Open on GitHub">🐍 glm.py</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/runtime/hermes.py','_blank')" title="Open on GitHub">🐍 hermes.py</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/runtime/kimi.py','_blank')" title="Open on GitHub">🐍 kimi.py</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/runtime/minimax.py','_blank')" title="Open on GitHub">🐍 minimax.py</div>
-            <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/runtime/windsurf.py','_blank')" title="Open on GitHub">🐍 windsurf.py</div>
-          </details>
-          <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/CODEX_CHANGES.md','_blank')" title="Open on GitHub">📝 CODEX_CHANGES.md</div>
-          <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/LICENSE','_blank')" title="Open on GitHub">📄 LICENSE</div>
-          <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/README.md','_blank')" title="Open on GitHub">📝 README.md</div>
-          <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/harness.py','_blank')" title="Open on GitHub">🐍 harness.py</div>
-          <div class="file" onclick="window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/panel.sh','_blank')" title="Open on GitHub">⚡ panel.sh</div>
-    </div>
+    <ul class="file-tree" id="file-tree">
+      <li><div class="spinner" style="border:2px solid #30363d;border-top:2px solid #58a6ff;border-radius:50%;width:16px;height:16px;animation:spin 1s linear infinite;display:inline-block;vertical-align:middle;margin-right:8px;"></div> Loading...</li>
+    </ul>
 
-    <h2 style="margin-top: 24px;">📊 Stats</h2>
-    <div class="stats">
-      📄 <span class="num">56</span> files · 📁 <span class="num">6</span> directories<br>
-      🔗 <a href="https://github.com/Bhllcoder1/deep-dive-skill" style="color:#58a6ff;">View on GitHub →</a>
-    </div>
+    <h2 style="margin-top:24px;">📊 Stats</h2>
+    <div id="stats" style="color:#8b949e;font-size:13px;">Loading...</div>
   </aside>
 
 </div>
 
+<style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
 <script>
-fetch('https://api.github.com/repos/Bhllcoder1/deep-dive-skill')
-  .then(r => r.json())
-  .then(d => {
-    document.getElementById('gh-meta').textContent = '★ ' + d.stargazers_count + ' stars · ' + d.forks_count + ' forks';
-  })
-  .catch(() => { document.getElementById('gh-meta').textContent = ''; });
+// ===== MARKDOWN RENDER =====
+const README_RAW = `"# Deep Dive Skill\n\n<p align=\"center\">\n  <img src=\"assets/cover.png\" alt=\"Deep Dive Skill\" width=\"360\">\n</p>\n\n<p align=\"center\">\n  <img alt=\"License\" src=\"https://img.shields.io/badge/license-MIT-blue.svg\">\n  <img alt=\"Python\" src=\"https://img.shields.io/badge/python-3.9%2B-blue.svg\">\n  <img alt=\"Platforms\" src=\"https://img.shields.io/badge/runtime%20adapters-15-brightgreen.svg\">\n  <img alt=\"Dependencies\" src=\"https://img.shields.io/badge/dependencies-zero%20(stdlib%20%2B%20curl)-lightgrey.svg\">\n  <img alt=\"Built with Codex\" src=\"https://img.shields.io/badge/hardened%20with-OpenAI%20Codex%20(GPT--5.6)-412991.svg\">\n</p>\n\n**Deep Dive** is a universal, adversarially verified deep-research agent that runs as a portable *skill* on top of AI coding and agent platforms. Point it at a question; it returns a claim-by-claim, source-cited report where each accepted claim has survived independent cross-examination.\n\n```\nPipeline: Scope \u2192 Search \u2192 Fetch \u2192 Verify (Adversarial) \u2192 Synthesize\n```\n\n## Why it's different\n\nMost research agents summarize the first few search results. Deep Dive treats extracted claims as guilty until proven otherwise: independent verifier calls try to refute each claim, and only claims with the required non-refutation support enter the final report. Ties, incomplete votes, malformed model output, and uncited findings remain unverified rather than being presented as facts.\n\nThe pipeline in `core/` is shared across all runtimes. `runtime/` selects an adapter automatically or via `DR_RUNTIME`; the generic path uses an OpenAI-compatible API plus DuckDuckGo HTML search, optional Google Custom Search, or optional SearXNG.\n\n## Quick Start\n\n```bash\n# 1. Clone\ngit clone https://github.com/Bhllcoder1/deep-dive-skill.git\ncd deep-dive-skill\n\n# 2. Set an API key for the generic fallback\nexport DEEPSEEK_API_KEY=\"sk-...\"\n\n# 3. Run research\npython3 harness.py \"Compare Storj vs Filebase decentralized storage\"\n```\n\n`requests` is optional. Without it, the generic runtime uses `curl`; if neither is available, it reports the missing client instead of starting a partial run.\n\n## Features\n\n- **15 runtime adapters** \u2014 Hermes, Claude Code, generic Python, Aider, Codex, Cline/Roo, Cursor, Gemini, GitHub Copilot, Amazon Q, Windsurf, Kimi, GLM, MiniMax, and Antigravity\n- **Adversarial verification** \u2014 verifier calls attempt to refute every selected claim; ties and incomplete support are not confirmed\n- **Structured output** \u2014 JSON or readable text reports with confidence, sources, refuted claims, unverified claims, caveats, and run statistics\n- **Configurable scope and cost** \u2014 tier presets plus bounded overrides for search angles, fetches, claims, votes, refutations, and concurrency\n- **Safe fallbacks** \u2014 malformed JSON, bad URLs, failed requests, and failed workers degrade to partial structured results rather than crashing the whole run\n- **Live terminal dashboard** \u2014 `panel.sh` launches the bundled dashboard\n\n## Platform Support\n\nAll 15 adapters are registered in `runtime/__init__.py`. The ten CLI adapters send each agent prompt to the local CLI on standard input, parse JSON from its output, and run those CLI calls in a bounded local worker pool; if the CLI is missing, fails, or returns invalid JSON, they fall back to `GenericRuntime`.\n\n| Platform | Runtime name | Selection | Agent execution path | Search/fetch path |\n|----------|--------------|-----------|----------------------|-------------------|\n| Hermes Agent | `hermes` | `HERMES_AGENT` or `DR_RUNTIME=hermes` | Hermes runtime; no platform CLI shell-out | Adapter HTTP/curl path |\n| Claude Code | `claude_code` | `CLAUDE_CODE=1` or `DR_RUNTIME=claude_code` | Emits bridge markers, then uses the generic API fallback because the bundled bridge is request-only | Emits bridge markers, then curl fallback |\n| Generic Python | `generic` | Default or `DR_RUNTIME=generic` | OpenAI-compatible API via `requests` or `curl` | DuckDuckGo HTML; optional Google Custom Search or SearXNG |\n| Aider | `aider` | `AIDER_CHAT_MODE`/`AIDER_VERSION` or forced | **Generic-only** (`GenericRuntime`); no Aider CLI shell-out | Generic search/fetch |\n| Codex CLI | `codex` | `CODEX_CLI` or forced | Local `codex` CLI, else generic fallback | Generic search/fetch |\n| Cline / Roo Code | `cline` | `CLINE_MCP` or forced | **Generic-only** (`GenericRuntime`); no Cline/Roo CLI shell-out | Generic search/fetch; `MCP_WEB_SEARCH_URL` is only reported during setup |\n| Cursor Agent | `cursor` | `CURSOR_CLI` or forced | Local `cursor-agent` CLI, else generic fallback | Generic search/fetch |\n| Gemini CLI | `gemini` | `GEMINI_CLI` or forced | Local `gemini` CLI, else generic fallback | Generic search/fetch |\n| GitHub Copilot | `copilot` | `COPILOT_CLI` or forced | Local `copilot`, then `gh copilot`, else generic fallback | Generic search/fetch |\n| Amazon Q Developer | `amazon_q` | `AMAZON_Q_CLI` or forced | Local `q` CLI, else generic fallback | Generic search/fetch |\n| Windsurf | `windsurf` | `WINDSURF_CLI` or forced | Local `windsurf` CLI, else generic fallback | Generic search/fetch |\n| Kimi Code | `kimi` | `KIMI_CLI` or forced | Local `kimi`, then `~/.kimi-code/bin/kimi`, else generic fallback | Generic search/fetch |\n| GLM Code (Z.ai) | `glm` | `GLM_CLI` or forced | Local `glm`, then `zai`, else generic fallback | Generic search/fetch |\n| MiniMax Code | `minimax` | `MINIMAX_CLI` or forced | Local `minimax` CLI, else generic fallback | Generic search/fetch |\n| Google Antigravity CLI | `antigravity` | `ANTIGRAVITY_CLI` or forced | Local `antigravity` CLI, else generic fallback; its interactive `/agent` and `/agents` commands are not used | Generic search/fetch |\n\nAll adapters expose bounded parallel work to the pipeline; `DR_MAX_WORKERS` controls the verifier concurrency and is hard-capped at 20.\n\n## CLI Usage\n\n```bash\n# Basic research\npython3 harness.py \"What are the pros and cons of Rust vs Go for CLI tools?\"\n\n# JSON report on stdout (progress goes to stderr)\npython3 harness.py \"...\" --format json\n\n# More thorough research\npython3 harness.py \"...\" --max-fetch 20 --max-claims 15 --votes 3\n\n# Force a specific runtime\npython3 harness.py \"...\" --runtime codex\nDR_RUNTIME=generic python3 harness.py \"...\"\n\n# Save the report to a chosen file\npython3 harness.py \"...\" --output my-report.json\n\n# Live control panel\n./panel.sh\n./panel.sh \"research question\"\n```\n\nThe Python API accepts the same `tier`, `angles`, `max_fetch`, `max_verify_claims`, `votes_per_claim`, `refutations_required`, and `max_workers` settings as keyword arguments. Each `deep_research()` call temporarily applies its settings and restores the process environment afterward.\n\n## Cost Tiers\n\nInstead of tuning individual knobs, pick a tier. It bounds total agent calls so a run never silently spawns hundreds of agents:\n\n```bash\npython3 harness.py \"...\" --tier low       # quick sanity check\npython3 harness.py \"...\" --tier medium    # decent coverage, light verification\npython3 harness.py \"...\" --tier high      # default \u2014 thorough, adversarially verified\npython3 harness.py \"...\" --tier ultra     # deep, wide research\nDR_COST_TIER=ultra python3 harness.py \"...\"\n```\n\nTotal agent calls are approximately `2 (scope + synthesize) + angles + max_fetch + (max_verify_claims \u00d7 votes_per_claim)`. `max_workers` separately caps concurrent verifier calls (hard ceiling: 20).\n\n| Tier | Angles | Max Fetch | Max Verify Claims | Votes/Claim | Refutations Required | Max Concurrent Workers | ~Agent Calls |\n|------|--------|-----------|-------------------|-------------|----------------------|------------------------|--------------|\n| `low` | 2 | 3 | 2 | 1 | 1 | 2 | ~9 |\n| `medium` | 4 | 8 | 6 | 2 | 2 | 4 | ~26 |\n| `high` *(default)* | 5 | 15 | 12 | 2 | 2 | 6 | ~46 |\n| `ultra` | 10 | 30 | 35 | 3 | 2 | 10 | ~147 |\n\nAny individual `DR_*` setting below overrides its tier value, so you can start from a tier and adjust one bound (for example, `--tier medium --votes 3`). `DR_REFUTATIONS_REQUIRED` cannot exceed `DR_VOTES_PER_CLAIM`.\n\n## Environment Variables\n\n| Variable | Default | Description |\n|----------|---------|-------------|\n| `DEEPSEEK_API_KEY` | \u2014 | Required by the generic fallback. The generic and Hermes runtimes also read an exact assignment from `~/.env`; Hermes additionally checks `~/.hermes/config.yaml`. |\n| `LLM_API_BASE` | `https://api.deepseek.com/v1` | OpenAI-compatible chat-completions base URL. |\n| `LLM_MODEL` | `deepseek-chat` | Model sent to the generic, Hermes, and Claude fallback API paths. |\n| `DR_RUNTIME` | `auto` | Force one of: `hermes`, `claude_code`, `generic`, `aider`, `codex`, `cline`, `cursor`, `gemini`, `copilot`, `amazon_q`, `windsurf`, `kimi`, `glm`, or `minimax`. |\n| `DR_COST_TIER` | `high` | Cost preset: `low`, `medium`, `high`, or `ultra`. |\n| `DR_ANGLES` | tier value | Number of search angles. |\n| `DR_MAX_FETCH` | tier value | Maximum URLs fetched and claim-extracted. |\n| `DR_MAX_VERIFY_CLAIMS` | tier value | Maximum claims sent to adversarial verification. |\n| `DR_VOTES_PER_CLAIM` | tier value | Independent verifier calls per selected claim. |\n| `DR_REFUTATIONS_REQUIRED` | tier value | Refutation/support threshold; cannot exceed `DR_VOTES_PER_CLAIM`. |\n| `DR_MAX_WORKERS` | tier value | Maximum concurrent verifier workers; hard-capped at 20. |\n| `GOOGLE_API_KEY` + `GOOGLE_CX` | \u2014 | Enable Google Custom Search when DuckDuckGo returns no results. Both are required. |\n| `SearXNG_URL` | \u2014 | HTTP(S) URL for a self-hosted SearXNG instance; the generic web helper falls back if it is unavailable. |\n| `LLM_PROVIDER` | `deepseek` | Dashboard/monitor provider selection. |\n| `LLM_API_KEY` | \u2014 | Explicit dashboard/monitor API key. |\n| `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `KIMI_API_KEY`, `QWEN_API_KEY`, `GEMINI_API_KEY`, `MINIMAX_API_KEY`, `ZHIPU_API_KEY` | \u2014 | Provider-specific keys recognized by the dashboard/monitor when `LLM_PROVIDER` selects the corresponding provider. The generic pipeline runtime itself uses `DEEPSEEK_API_KEY`. |\n| `MCP_WEB_SEARCH_URL` | \u2014 | Reported by the Cline setup message only; it does not replace the generic search implementation. |\n\n### Local CLI overrides\n\nEvery CLI-backed adapter accepts a command/path override. The value can be an executable path or a command resolvable on `PATH`; adapters otherwise try their built-in command names listed in the platform table.\n\n| Variable | Adapter |\n|----------|---------|\n| `CODEX_CLI` | Codex CLI |\n| `CURSOR_CLI` | Cursor Agent |\n| `GEMINI_CLI` | Gemini CLI |\n| `COPILOT_CLI` | GitHub Copilot |\n| `AMAZON_Q_CLI` | Amazon Q Developer |\n| `WINDSURF_CLI` | Windsurf |\n| `KIMI_CLI` | Kimi Code |\n| `GLM_CLI` | GLM Code |\n| `MINIMAX_CLI` | MiniMax Code |\n\nAuto-detection also recognizes `HERMES_AGENT`, `CLAUDE_CODE=1`, `AIDER_CHAT_MODE` or `AIDER_VERSION`, and `CLINE_MCP`. `OPENCLAW_MODE` is recognized during detection but has no registered OpenClaw adapter, so it resolves to the generic runtime; use an explicitly supported `DR_RUNTIME` value instead.\n\n## Python API\n\n```python\nfrom harness import deep_research, print_report\n\nresult = deep_research(\n    \"Compare AWS S3 vs Backblaze B2 pricing and hidden fees\",\n    max_fetch=20,\n    max_verify_claims=15,\n    votes_per_claim=3,\n)\n\nprint_report(result)\n\nfor finding in result.get(\"findings\", []):\n    print(f\"{finding['claim']} \u2014 {finding['confidence']}\")\n    print(f\"  Sources: {', '.join(finding['sources'])}\")\n```\n\n## Architecture\n\n```\nharness.py                          \u2190 CLI and Python API; per-call configuration isolation\npanel.sh                            \u2190 Dashboard launcher\nassets/\n  cover.png                         \u2190 README cover image\ncore/\n  __init__.py                       \u2190 Public core exports\n  agent.py                          \u2190 Legacy universal LLM helper and JSON/schema boundary\n  dashboard.py                      \u2190 Terminal dashboard, controller, and run history\n  engine.py                         \u2190 Scope \u2192 Search \u2192 Fetch \u2192 Verify \u2192 Synthesize pipeline\n  monitor.py                        \u2190 Thread-safe phase/agent monitoring and cost reporting\n  parallel.py                       \u2190 Bounded pipeline/parallel helper functions\n  schemas.py                        \u2190 Structured-output schemas\n  tiers.py                          \u2190 Cost-tier presets and worker ceiling\n  web.py                            \u2190 Portable search and bounded HTTP(S) fetch helpers\nruntime/\n  __init__.py                       \u2190 Runtime registry, detection, and factory\n  base.py                           \u2190 Runtime interface and capability types\n  hermes.py                         \u2190 Hermes runtime\n  claude_code.py                    \u2190 Claude bridge markers plus generic fallback\n  generic.py                        \u2190 OpenAI-compatible API and web fallback runtime\n  aider.py                          \u2190 Aider-named generic-only adapter\n  cline.py                          \u2190 Cline/Roo-named generic-only adapter\n  codex.py                          \u2190 Codex CLI adapter\n  cursor.py                         \u2190 Cursor Agent CLI adapter\n  gemini.py                         \u2190 Gemini CLI adapter\n  copilot.py                        \u2190 Copilot / gh copilot adapter\n  amazon_q.py                       \u2190 Amazon Q `q` CLI adapter\n  windsurf.py                       \u2190 Windsurf CLI adapter\n  kimi.py                           \u2190 Kimi CLI adapter\n  glm.py                            \u2190 GLM / zai CLI adapter\n  minimax.py                        \u2190 MiniMax CLI adapter\n  adapters/\n    claude-code-workflow.js         \u2190 Standalone Claude Code workflow implementation\n    claude-code-wrapper.js          \u2190 Node wrapper for the Python harness bridge\nCODEX_CHANGES.md                    \u2190 Codex hardening and adapter-extension summary\nCODEX_CHANGES/                      \u2190 Per-module hardening notes\n```\n\n## How It Works\n\n1. **Scope** \u2014 the LLM decomposes the question into complementary search angles.\n2. **Search** \u2014 each angle is searched and results are normalized and deduplicated.\n3. **Fetch** \u2014 bounded public HTTP(S) sources are fetched; the model extracts quoted, source-linked claims.\n4. **Verify** \u2014 independent verifier calls try to refute selected claims. A claim survives only when it has enough non-refutation support; ties and failed votes stay unverified.\n5. **Synthesize** \u2014 only surviving, source-cited claims are merged into the final report.\n\n## Codex Hardening and Extension\n\nThis project was hardened and extended with OpenAI Codex (GPT-5.6). [`CODEX_CHANGES.md`](CODEX_CHANGES.md) summarizes the reliability and security work, including bounded concurrency, strict JSON and schema handling, safe fetch behavior, per-call configuration isolation, and the platform-adapter expansion. [`CODEX_CHANGES/`](CODEX_CHANGES/) contains the concise per-module notes.\n\n## License\n\nMIT"`;
+
+function renderReadme() {
+  try {
+    // Make sure images in assets/ point to GitHub raw
+    const html = marked.parse(README_RAW, { breaks: true });
+    document.getElementById('readme-content').innerHTML = html;
+
+    // Fix relative image paths
+    document.querySelectorAll('#readme-content img[src^="assets/"]').forEach(img => {
+      img.src = 'https://raw.githubusercontent.com/Bhllcoder1/deep-dive-skill/main/' + img.src;
+    });
+    // Fix relative links
+    document.querySelectorAll('#readme-content a[href^="assets/"], #readme-content a[href^="core/"], #readme-content a[href^="runtime/"], #readme-content a[href^="CODEX_CHANGES"]').forEach(a => {
+      if (!a.href.startsWith('http')) {
+        a.href = 'https://github.com/Bhllcoder1/deep-dive-skill/tree/main/' + a.getAttribute('href');
+      }
+    });
+  } catch (e) {
+    document.getElementById('readme-content').innerHTML =
+      '<div style="color:#f85149;padding:20px;">Error rendering README: ' + e.message + '</div>';
+  }
+}
+
+// ===== FILE TREE =====
+const FILE_TREE_DATA = [{"name": "CODEX_CHANGES", "type": "dir", "path": "CODEX_CHANGES", "children": [{"name": "agent.md", "type": "file", "path": "CODEX_CHANGES/agent.md"}, {"name": "antigravity_and_delegation.md", "type": "file", "path": "CODEX_CHANGES/antigravity_and_delegation.md"}, {"name": "engine.md", "type": "file", "path": "CODEX_CHANGES/engine.md"}, {"name": "harness.md", "type": "file", "path": "CODEX_CHANGES/harness.md"}, {"name": "monitor.md", "type": "file", "path": "CODEX_CHANGES/monitor.md"}, {"name": "parallel.md", "type": "file", "path": "CODEX_CHANGES/parallel.md"}, {"name": "readme_and_cleanup.md", "type": "file", "path": "CODEX_CHANGES/readme_and_cleanup.md"}, {"name": "runtime_amazon_q.md", "type": "file", "path": "CODEX_CHANGES/runtime_amazon_q.md"}, {"name": "runtime_base.md", "type": "file", "path": "CODEX_CHANGES/runtime_base.md"}, {"name": "runtime_claude_code.md", "type": "file", "path": "CODEX_CHANGES/runtime_claude_code.md"}, {"name": "runtime_copilot.md", "type": "file", "path": "CODEX_CHANGES/runtime_copilot.md"}, {"name": "runtime_cursor.md", "type": "file", "path": "CODEX_CHANGES/runtime_cursor.md"}, {"name": "runtime_gemini.md", "type": "file", "path": "CODEX_CHANGES/runtime_gemini.md"}, {"name": "runtime_generic.md", "type": "file", "path": "CODEX_CHANGES/runtime_generic.md"}, {"name": "runtime_glm.md", "type": "file", "path": "CODEX_CHANGES/runtime_glm.md"}, {"name": "runtime_hermes.md", "type": "file", "path": "CODEX_CHANGES/runtime_hermes.md"}, {"name": "runtime_kimi.md", "type": "file", "path": "CODEX_CHANGES/runtime_kimi.md"}, {"name": "runtime_minimax.md", "type": "file", "path": "CODEX_CHANGES/runtime_minimax.md"}, {"name": "runtime_windsurf.md", "type": "file", "path": "CODEX_CHANGES/runtime_windsurf.md"}, {"name": "web.md", "type": "file", "path": "CODEX_CHANGES/web.md"}]}, {"name": "CODEX_CHANGES.md", "type": "file", "path": "CODEX_CHANGES.md"}, {"name": "LICENSE", "type": "file", "path": "LICENSE"}, {"name": "README.md", "type": "file", "path": "README.md"}, {"name": "assets", "type": "dir", "path": "assets", "children": [{"name": "cover.png", "type": "file", "path": "assets/cover.png"}]}, {"name": "core", "type": "dir", "path": "core", "children": [{"name": "__init__.py", "type": "file", "path": "core/__init__.py"}, {"name": "agent.py", "type": "file", "path": "core/agent.py"}, {"name": "dashboard.py", "type": "file", "path": "core/dashboard.py"}, {"name": "engine.py", "type": "file", "path": "core/engine.py"}, {"name": "monitor.py", "type": "file", "path": "core/monitor.py"}, {"name": "parallel.py", "type": "file", "path": "core/parallel.py"}, {"name": "schemas.py", "type": "file", "path": "core/schemas.py"}, {"name": "tiers.py", "type": "file", "path": "core/tiers.py"}, {"name": "web.py", "type": "file", "path": "core/web.py"}]}, {"name": "docs", "type": "dir", "path": "docs", "children": [{"name": "_config.yml", "type": "file", "path": "docs/_config.yml"}, {"name": "index.html", "type": "file", "path": "docs/index.html"}, {"name": "index.md", "type": "file", "path": "docs/index.md"}]}, {"name": "harness.py", "type": "file", "path": "harness.py"}, {"name": "panel.sh", "type": "file", "path": "panel.sh"}, {"name": "runtime", "type": "dir", "path": "runtime", "children": [{"name": "__init__.py", "type": "file", "path": "runtime/__init__.py"}, {"name": "_cli_parallel.py", "type": "file", "path": "runtime/_cli_parallel.py"}, {"name": "adapters", "type": "dir", "path": "runtime/adapters", "children": [{"name": "claude-code-workflow.js", "type": "file", "path": "runtime/adapters/claude-code-workflow.js"}, {"name": "claude-code-wrapper.js", "type": "file", "path": "runtime/adapters/claude-code-wrapper.js"}]}, {"name": "aider.py", "type": "file", "path": "runtime/aider.py"}, {"name": "amazon_q.py", "type": "file", "path": "runtime/amazon_q.py"}, {"name": "antigravity.py", "type": "file", "path": "runtime/antigravity.py"}, {"name": "base.py", "type": "file", "path": "runtime/base.py"}, {"name": "claude_code.py", "type": "file", "path": "runtime/claude_code.py"}, {"name": "cline.py", "type": "file", "path": "runtime/cline.py"}, {"name": "codex.py", "type": "file", "path": "runtime/codex.py"}, {"name": "copilot.py", "type": "file", "path": "runtime/copilot.py"}, {"name": "cursor.py", "type": "file", "path": "runtime/cursor.py"}, {"name": "gemini.py", "type": "file", "path": "runtime/gemini.py"}, {"name": "generic.py", "type": "file", "path": "runtime/generic.py"}, {"name": "glm.py", "type": "file", "path": "runtime/glm.py"}, {"name": "hermes.py", "type": "file", "path": "runtime/hermes.py"}, {"name": "kimi.py", "type": "file", "path": "runtime/kimi.py"}, {"name": "minimax.py", "type": "file", "path": "runtime/minimax.py"}, {"name": "windsurf.py", "type": "file", "path": "runtime/windsurf.py"}]}];
+
+function renderFileTree() {
+  const tree = document.getElementById('file-tree');
+  tree.innerHTML = '';
+
+  function buildList(items, parentUl) {
+    // Sort: folders first, then files, alphabetically
+    const sorted = [...items].sort((a, b) => {
+      if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    for (const item of sorted) {
+      const li = document.createElement('li');
+      if (item.type === 'dir') {
+        const folder = document.createElement('div');
+        folder.className = 'folder open';
+        folder.textContent = item.name;
+        if (item.children) {
+          const count = item.children.filter(c => c.type === 'file').length;
+          const subdirs = item.children.filter(c => c.type === 'dir').length;
+          const sub = document.createElement('span');
+          sub.className = 'count-badge';
+          sub.textContent = `${count} files${subdirs ? `, ${subdirs} dirs` : ''}`;
+          folder.appendChild(sub);
+        }
+        li.appendChild(folder);
+
+        const ul = document.createElement('ul');
+        ul.className = 'open';
+        if (item.children) {
+          buildList(item.children, ul);
+        }
+        li.appendChild(ul);
+
+        folder.addEventListener('click', () => {
+          folder.classList.toggle('open');
+          ul.classList.toggle('open');
+        });
+      } else {
+        const file = document.createElement('div');
+        const ext = item.name.split('.').pop();
+        file.className = 'file ' + (ext === 'py' ? 'py' : ext === 'sh' ? 'sh' : ext === 'md' ? 'md' : ext === 'json' ? 'json' : ext === 'js' ? 'js' : '');
+        file.textContent = item.name;
+        file.addEventListener('click', () => {
+          window.open('https://github.com/Bhllcoder1/deep-dive-skill/blob/main/' + item.path, '_blank');
+        });
+        file.style.cursor = 'pointer';
+        file.title = 'Open on GitHub: ' + item.path;
+        li.appendChild(file);
+      }
+      parentUl.appendChild(li);
+    }
+  }
+
+  buildList(FILE_TREE_DATA, tree);
+}
+
+// ===== STATS =====
+function countStats(items) {
+  let files = 0, dirs = 0;
+  function walk(arr) {
+    for (const item of arr) {
+      if (item.type === 'dir') {
+        dirs++;
+        if (item.children) walk(item.children);
+      } else {
+        files++;
+      }
+    }
+  }
+  walk(items);
+  return { files, dirs };
+}
+
+async function loadStars() {
+  try {
+    const r = await fetch('https://api.github.com/repos/Bhllcoder1/deep-dive-skill');
+    const data = await r.json();
+    document.getElementById('star-count').textContent = `★ ${data.stargazers_count} · ${data.forks_count} forks`;
+    const stats = countStats(FILE_TREE_DATA);
+    document.getElementById('stats').innerHTML =
+      `📄 ${stats.files} files · 📁 ${stats.dirs} directories<br>` +
+      `🔗 <a href="https://github.com/Bhllcoder1/deep-dive-skill" style="color:#58a6ff;">View on GitHub →</a>`;
+  } catch {
+    document.getElementById('star-count').textContent = '';
+    document.getElementById('stats').innerHTML = 'Could not load stats';
+  }
+}
+
+renderReadme();
+renderFileTree();
+loadStars();
 </script>
 </body>
 </html>
