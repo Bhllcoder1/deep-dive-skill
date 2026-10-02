@@ -1,177 +1,97 @@
 """
-Runtime Adapter Factory.
-Her platform için doğru runtime'ı seçer ve yapılandırır.
+Runtime adapter registry.
 
-Kullanım:
-    from runtime import get_runtime
-    
-    # Otomatik algılama
-    rt = get_runtime()
-    rt.setup()
-    
-    # Zorla seçim
-    rt = get_runtime("hermes")
-    rt = get_runtime("claude_code")
-    rt = get_runtime("generic")
-    
-    # Runtime'ı kullan
-    result = rt.agent_call("prompt", schema)
-    results = rt.web_search("query")
-    parallel_results = rt.run_parallel([fn1, fn2, fn3])
+Every platform adapter is registered here by name. ``get_runtime`` and the harness
+read this registry, so adding an adapter means one ``register()`` call (or one entry
+in ``_BUILTIN``); nothing else needs to change.
+
+    from runtime import get_runtime, register
+    rt = get_runtime()            # auto-detect (DR_RUNTIME, then *_CLI flags)
+    rt = get_runtime("hermes")    # forced
+
+    register("mine", MyRuntime)                      # a class
+    register("mine", "my_pkg.my_mod:MyRuntime")      # or a lazy "module:Class" path
+    # optional auto-detection: register("mine", MyRuntime, detect_env="MINE_CLI")
 """
 
+import importlib
 import os
-from typing import Optional
+from typing import Dict, List, Optional, Tuple, Type, Union
 
 from .base import BaseRuntime
 
+RuntimeTarget = Union[Type[BaseRuntime], str]
+
+_RUNTIME_REGISTRY: Dict[str, RuntimeTarget] = {}
+# (environment variable, runtime name) in detection priority order.
+_DETECTION: List[Tuple[str, str]] = []
+
+
+def register(name: str, runtime: RuntimeTarget, detect_env: Optional[str] = None) -> None:
+    """Register a runtime class, or a lazily imported ``"module:Class"`` path."""
+    if not isinstance(name, str) or not name.strip() or name == "auto":
+        raise ValueError("runtime name must be a non-empty string other than 'auto'")
+    if not (isinstance(runtime, str) or (isinstance(runtime, type) and issubclass(runtime, BaseRuntime))):
+        raise TypeError("runtime must be a BaseRuntime subclass or a 'module:Class' string")
+    _RUNTIME_REGISTRY[name] = runtime
+    if detect_env:
+        _DETECTION[:] = [pair for pair in _DETECTION if pair[1] != name] + [(detect_env, name)]
+
+
+def registered_names() -> List[str]:
+    return sorted(_RUNTIME_REGISTRY)
+
 
 def detect() -> str:
-    """
-    Platformu otomatik algılar.
-
-    Sırasıyla:
-    1. DR_RUNTIME environment variable (force)
-    2. HERMES_AGENT
-    3. CLAUDE_CODE
-    4. AIDER_CHAT_MODE / AIDER_VERSION
-    5. OPENCLAW_MODE
-    6. CODEX_CLI
-    7. CLINE_MCP
-    8. CURSOR_CLI
-    9. GEMINI_CLI
-    10. COPILOT_CLI
-    11. AMAZON_Q_CLI
-    12. WINDSURF_CLI
-    13. KIMI_CLI
-    14. GLM_CLI
-    15. MINIMAX_CLI
-    16. ANTIGRAVITY_CLI
-    17. generic (fallback)
-    """
+    """Pick a runtime: ``DR_RUNTIME`` if set, else the first registered detection flag
+    present in the environment, else ``generic``. ``CLAUDE_CODE`` must equal ``"1"``."""
     force = os.environ.get("DR_RUNTIME", "auto")
     if force and force != "auto":
         return force
-
-    if os.environ.get("HERMES_AGENT"):
-        return "hermes"
-    if os.environ.get("CLAUDE_CODE") == "1":
-        return "claude_code"
-    if os.environ.get("AIDER_CHAT_MODE") or os.environ.get("AIDER_VERSION"):
-        return "aider"
-    if os.environ.get("OPENCLAW_MODE"):
-        return "openclaw"
-    if os.environ.get("CODEX_CLI"):
-        return "codex"
-    if os.environ.get("CLINE_MCP"):
-        return "cline"
-    if os.environ.get("CURSOR_CLI"):
-        return "cursor"
-    if os.environ.get("GEMINI_CLI"):
-        return "gemini"
-    if os.environ.get("COPILOT_CLI"):
-        return "copilot"
-    if os.environ.get("AMAZON_Q_CLI"):
-        return "amazon_q"
-    if os.environ.get("WINDSURF_CLI"):
-        return "windsurf"
-    if os.environ.get("KIMI_CLI"):
-        return "kimi"
-    if os.environ.get("GLM_CLI"):
-        return "glm"
-    if os.environ.get("MINIMAX_CLI"):
-        return "minimax"
-    if os.environ.get("ANTIGRAVITY_CLI"):
-        return "antigravity"
-
+    for env_var, name in _DETECTION:
+        value = os.environ.get(env_var)
+        if value == "1" if env_var == "CLAUDE_CODE" else value:
+            return name
     return "generic"
 
 
-# Runtime sınıfı kaydı
-_RUNTIME_REGISTRY = {}
-
-
-def register(name: str, runtime_class):
-    """Bir runtime sınıfını kaydeder."""
-    _RUNTIME_REGISTRY[name] = runtime_class
+def _load(target: RuntimeTarget) -> Type[BaseRuntime]:
+    if isinstance(target, str):
+        module_name, _, class_name = target.partition(":")
+        return getattr(importlib.import_module(module_name), class_name)
+    return target
 
 
 def get_runtime(runtime_name: Optional[str] = None) -> BaseRuntime:
-    """
-    İstenen runtime'ı döndürür.
-    
-    Args:
-        runtime_name: Runtime adı (hermes, claude_code, generic, vb.)
-                      None = otomatik algıla
-    
-    Returns:
-        BaseRuntime türevi bir örnek
-    """
+    """Return an instance of the requested runtime (None = auto-detect).
+
+    Unknown names fall back to the generic runtime."""
     name = runtime_name or detect()
-
-    # Lazy import — sadece ihtiyaç duyulan runtime yüklenir
-    if name == "hermes":
-        from .hermes import HermesRuntime
-        return HermesRuntime()
-    elif name == "claude_code":
-        from .claude_code import ClaudeCodeRuntime
-        return ClaudeCodeRuntime()
-    elif name == "aider":
-        from .aider import AiderRuntime
-        return AiderRuntime()
-    elif name == "codex":
-        from .codex import CodexRuntime
-        return CodexRuntime()
-    elif name == "cline":
-        from .cline import ClineRuntime
-        return ClineRuntime()
-    elif name == "cursor":
-        from .cursor import CursorRuntime
-        return CursorRuntime()
-    elif name == "gemini":
-        from .gemini import GeminiRuntime
-        return GeminiRuntime()
-    elif name == "copilot":
-        from .copilot import CopilotRuntime
-        return CopilotRuntime()
-    elif name == "amazon_q":
-        from .amazon_q import AmazonQRuntime
-        return AmazonQRuntime()
-    elif name == "windsurf":
-        from .windsurf import WindsurfRuntime
-        return WindsurfRuntime()
-    elif name == "kimi":
-        from .kimi import KimiRuntime
-        return KimiRuntime()
-    elif name == "glm":
-        from .glm import GLMRuntime
-        return GLMRuntime()
-    elif name == "minimax":
-        from .minimax import MiniMaxRuntime
-        return MiniMaxRuntime()
-    elif name == "antigravity":
-        from .antigravity import AntigravityRuntime
-        return AntigravityRuntime()
-    else:
-        from .generic import GenericRuntime
-        return GenericRuntime()
+    target = _RUNTIME_REGISTRY.get(name) or _RUNTIME_REGISTRY["generic"]
+    return _load(target)()
 
 
-# Built-in runtime'ları kaydet
-register("hermes", None)  # Lazy loaded
-register("claude_code", None)
-register("generic", None)
-register("aider", None)
-register("codex", None)
-register("cline", None)
-register("cursor", None)
-register("gemini", None)
-register("copilot", None)
-register("amazon_q", None)
-register("windsurf", None)
-register("kimi", None)
-register("glm", None)
-register("minimax", None)
-register("antigravity", None)
+_BUILTIN = [
+    # name, target, detection env var (priority order = list order)
+    ("hermes", "runtime.hermes:HermesRuntime", "HERMES_AGENT"),
+    ("claude_code", "runtime.claude_code:ClaudeCodeRuntime", "CLAUDE_CODE"),
+    ("aider", "runtime.aider:AiderRuntime", "AIDER_CHAT_MODE"),
+    ("codex", "runtime.cli:CodexRuntime", "CODEX_CLI"),
+    ("cline", "runtime.cline:ClineRuntime", "CLINE_MCP"),
+    ("cursor", "runtime.cli:CursorRuntime", "CURSOR_CLI"),
+    ("gemini", "runtime.cli:GeminiRuntime", "GEMINI_CLI"),
+    ("copilot", "runtime.cli:CopilotRuntime", "COPILOT_CLI"),
+    ("amazon_q", "runtime.cli:AmazonQRuntime", "AMAZON_Q_CLI"),
+    ("windsurf", "runtime.cli:WindsurfRuntime", "WINDSURF_CLI"),
+    ("kimi", "runtime.cli:KimiRuntime", "KIMI_CLI"),
+    ("glm", "runtime.cli:GLMRuntime", "GLM_CLI"),
+    ("minimax", "runtime.cli:MiniMaxRuntime", "MINIMAX_CLI"),
+    ("antigravity", "runtime.cli:AntigravityRuntime", "ANTIGRAVITY_CLI"),
+    ("generic", "runtime.generic:GenericRuntime", None),
+]
+for _name, _target, _flag in _BUILTIN:
+    register(_name, _target, _flag)
+# AIDER_VERSION is a second detection flag for the same adapter.
+_DETECTION.insert(_DETECTION.index(("AIDER_CHAT_MODE", "aider")) + 1, ("AIDER_VERSION", "aider"))
 
-__all__ = ["BaseRuntime", "get_runtime", "detect", "register"]
+__all__ = ["BaseRuntime", "get_runtime", "detect", "register", "registered_names"]

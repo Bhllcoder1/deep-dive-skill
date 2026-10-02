@@ -54,6 +54,16 @@ class GenericRuntime(BaseRuntime):
             print("[generic] ❌ LLM_API_BASE geçerli bir http(s) API adresi değil.")
             return False
 
+        if not self._init_http_client():
+            return False
+
+        self._ready = True
+        client = "requests" if self._has_requests else "curl"
+        print(f"[generic] ✅ Runtime hazır ({client})")
+        return True
+
+    def _init_http_client(self) -> bool:
+        """Detect requests/curl for search and fetch (independent of any LLM API key)."""
         try:
             import requests  # noqa: F401
             self._has_requests = True
@@ -75,10 +85,6 @@ class GenericRuntime(BaseRuntime):
             if probe.returncode != 0:
                 print("[generic] ❌ curl kullanılabilir değil.")
                 return False
-
-        self._ready = True
-        client = "requests" if self._has_requests else "curl"
-        print(f"[generic] ✅ Runtime hazır ({client})")
         return True
 
     @staticmethod
@@ -225,7 +231,7 @@ class GenericRuntime(BaseRuntime):
         return extract_json_object(message.get("content"), schema)
 
     def web_search(self, query: str, max_results: int = 6) -> List[dict]:
-        """Search DDG first, then Google Custom Search when credentials are configured."""
+        """Search SearXNG (if configured), then DuckDuckGo, then Google Custom Search (if configured)."""
         if not isinstance(query, str) or not query.strip() or not isinstance(max_results, int) or isinstance(max_results, bool):
             return []
         max_results = min(max_results, 50)
@@ -233,11 +239,46 @@ class GenericRuntime(BaseRuntime):
             return []
         query = query.strip()[:2000]
 
-        results = self._ddg_instant_results(query, max_results)
+        results = self._searxng_results(query, max_results)
+        if not results:
+            results = self._ddg_instant_results(query, max_results)
         if not results:
             results = self._ddg_html_results(query, max_results)
         if not results:
             results = self._google_results(query, max_results)
+        return results[:max_results]
+
+    def _searxng_results(self, query: str, max_results: int) -> List[dict]:
+        """Query the self-hosted SearXNG instance named by SearXNG_URL (if configured).
+
+        The instance address is operator-configured, so it is not subject to the
+        public-URL rule that applies to fetched pages; its *results* still are."""
+        base = os.environ.get("SearXNG_URL", "").strip().rstrip("/")
+        parsed = urllib.parse.urlsplit(base)
+        if not base or parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            return []
+        url = f"{base}/search?" + urllib.parse.urlencode({"q": query, "format": "json", "categories": "general"})
+        data: Any = None
+        try:
+            if self._has_requests:
+                import requests
+                response = requests.get(url, headers={"User-Agent": _USER_AGENT}, timeout=(_CONNECT_TIMEOUT, 15))
+                data = response.json() if response.ok else None
+                response.close()
+            elif self._curl_path:
+                proc = subprocess.run(
+                    [self._curl_path, "--silent", "--fail", "--connect-timeout", str(_CONNECT_TIMEOUT),
+                     "--max-time", "15", "-A", _USER_AGENT, "--", url],
+                    capture_output=True, text=True, errors="replace", timeout=20)
+                data = json.loads(proc.stdout) if proc.returncode == 0 else None
+        except Exception:
+            return []
+        if not isinstance(data, dict) or not isinstance(data.get("results"), list):
+            return []
+        results: List[dict] = []
+        for item in data["results"]:
+            if isinstance(item, dict):
+                self._append_search_result(results, item.get("url"), item.get("title"), item.get("content"), "medium")
         return results[:max_results]
 
     def _ddg_instant_results(self, query: str, max_results: int) -> List[dict]:

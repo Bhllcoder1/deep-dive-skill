@@ -47,7 +47,7 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(runtime.get_runtime("does-not-exist").name, "generic")
 
     def test_harness_accepts_exactly_the_registered_runtimes(self):
-        self.assertEqual(set(harness._RUNTIMES), set(runtime.registered_names()) | {"auto"})
+        self.assertEqual(harness._runtime_names(), set(runtime.registered_names()) | {"auto"})
 
 
 class DetectTests(unittest.TestCase):

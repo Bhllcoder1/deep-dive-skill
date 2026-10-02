@@ -24,10 +24,11 @@ _CONFIG_MAP = {
     "refutations_required": "DR_REFUTATIONS_REQUIRED",
     "max_workers": "DR_MAX_WORKERS",
 }
-_RUNTIMES = {
-    "auto", "hermes", "claude_code", "generic", "aider", "codex", "cline",
-    "cursor", "gemini", "copilot", "amazon_q", "windsurf", "kimi", "glm", "minimax", "antigravity",
-}
+def _runtime_names() -> set:
+    from runtime import registered_names
+    return set(registered_names()) | {"auto"}
+
+
 _CONFIG_LOCK = threading.RLock()
 
 
@@ -169,7 +170,7 @@ def deep_research(question: str, runtime_name: Optional[str] = None,
     question = question.strip()
     if not question:
         return _error_result(question, "No research question provided.")
-    if runtime_name is not None and (not isinstance(runtime_name, str) or runtime_name not in _RUNTIMES):
+    if runtime_name is not None and (not isinstance(runtime_name, str) or runtime_name not in _runtime_names()):
         return _error_result(question, f"Unsupported runtime: {runtime_name!r}.")
 
     try:
@@ -322,7 +323,7 @@ def main() -> int:
     )
     parser.add_argument("question", nargs="?", help="Araştırma sorusu")
     parser.add_argument("--format", choices=["text", "json"], default="text")
-    parser.add_argument("--runtime", choices=sorted(_RUNTIMES), default="auto")
+    parser.add_argument("--runtime", choices=sorted(_runtime_names()), default="auto")
     parser.add_argument("--tier", choices=["low", "medium", "high", "ultra"],
                         help="Cost tier — bounds total agent calls (low~8, medium~26, high~46, ultra~147). Default: high")
     parser.add_argument("--angles", type=int, help="Search angle sayısı (tier'i override eder)")
