@@ -35,6 +35,11 @@ _RETRYABLE_STATUS = {408, 409, 425, 429, 500, 502, 503, 504}
 
 _LOG = get_logger("runtime.generic")
 
+def _is_loopback_url(url: str) -> bool:
+    host = (urllib.parse.urlsplit(url).hostname or "").lower()
+    return host in {"localhost", "127.0.0.1", "::1"} or host.endswith(".localhost")
+
+
 class GenericRuntime(BaseRuntime):
     """Generic Python runtime with no required dependency beyond Python and curl."""
 
@@ -52,8 +57,7 @@ class GenericRuntime(BaseRuntime):
     def setup(self) -> bool:
         """Validate API configuration and select an available HTTP client."""
         self._ready = False
-        self._api_key = os.environ.get("DEEPSEEK_API_KEY", "").strip() or self._dotenv_api_key()
-        self._api_url = self._api_endpoint()
+        self._load_api_config()
         if not self._api_key:
             _LOG.error("[generic] ❌ DEEPSEEK_API_KEY bulunamadı.")
             _LOG.info("  export DEEPSEEK_API_KEY='sk-...'")
@@ -69,6 +73,13 @@ class GenericRuntime(BaseRuntime):
         client = "requests" if self._has_requests else "curl"
         _LOG.info(f"[generic] ✅ Runtime hazır ({client})")
         return True
+
+    def _load_api_config(self) -> None:
+        """Read the LLM API key and endpoint (also used by CLI runtimes for their fallback)."""
+        self._api_key = os.environ.get("DEEPSEEK_API_KEY", "").strip() or self._dotenv_api_key()
+        self._api_url = self._api_endpoint()
+        if self._api_url.startswith("http://") and not _is_loopback_url(self._api_url):
+            _LOG.warning("  [generic] ⚠ LLM_API_BASE is plain http:// — the API key would be sent unencrypted")
 
     def _init_http_client(self) -> bool:
         """Detect requests/curl for search and fetch (independent of any LLM API key)."""
@@ -134,6 +145,10 @@ class GenericRuntime(BaseRuntime):
             self.log("agent çağrısı geçersiz schema ile atlandı")
             return None
         if not self._ready and not self.setup():
+            return None
+        if not self._api_key or not self._api_url:
+            # e.g. a CLI runtime whose CLI failed and no API fallback is configured: fail fast, no retries.
+            _LOG.warning("  [generic] LLM API yapılandırılmamış (DEEPSEEK_API_KEY / LLM_API_BASE); çağrı atlandı")
             return None
 
         start = time.monotonic()

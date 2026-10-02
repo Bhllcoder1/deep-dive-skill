@@ -81,6 +81,7 @@ class CliRuntime(GenericRuntime):
             _LOG.warning(f"{tag} ⚠ {self.env_var}={self._override_ignored!r} is not an executable; using default lookup")
         if self._cli_cmd:
             self._init_http_client()  # search/fetch need no LLM key
+            self._load_api_config()   # optional: lets a failing CLI fall back to the API
             self._ready = True
             _LOG.info(f"{tag} ✅ {self.display_name} CLI detected: {' '.join(self._cli_cmd)}")
             return True

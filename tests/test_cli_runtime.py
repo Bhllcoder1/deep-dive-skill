@@ -108,3 +108,34 @@ class CliRuntimeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CliFallbackConfigTests(unittest.TestCase):
+    def test_cli_runtime_loads_api_config_for_its_fallback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            make_script(tmp, "codex", "exit 3\n")
+            env = {"PATH": tmp, "HOME": tmp, "DEEPSEEK_API_KEY": "sk-fallback-key-123456"}
+            with mock.patch.dict(os.environ, env, clear=True):
+                rt = CodexRuntime()
+                rt.setup()
+                self.assertEqual(rt._api_key, "sk-fallback-key-123456")
+                self.assertTrue(rt._api_url.endswith("/chat/completions"))
+
+    def test_failing_cli_without_api_config_fails_fast_without_retries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            make_script(tmp, "codex", "exit 3\n")
+            with mock.patch.dict(os.environ, {"PATH": tmp, "HOME": tmp}, clear=True), \
+                    mock.patch("runtime.generic.time.sleep") as sleep, \
+                    mock.patch.object(GenericRuntime, "_post_once") as post:
+                self.assertIsNone(CodexRuntime().agent_call("p"))
+        post.assert_not_called()
+        sleep.assert_not_called()
+
+    def test_plain_http_api_base_warns_unless_loopback(self):
+        rt = GenericRuntime()
+        with mock.patch.dict(os.environ, {"LLM_API_BASE": "http://llm.example/v1", "DEEPSEEK_API_KEY": "k"}):
+            with self.assertLogs("deepdive.runtime.generic", level="WARNING"):
+                rt._load_api_config()
+        with mock.patch.dict(os.environ, {"LLM_API_BASE": "http://localhost:8000/v1", "DEEPSEEK_API_KEY": "k"}):
+            with self.assertNoLogs("deepdive.runtime.generic", level="WARNING") if hasattr(self, "assertNoLogs") else mock.MagicMock():
+                rt._load_api_config()

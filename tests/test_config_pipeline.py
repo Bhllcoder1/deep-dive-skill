@@ -60,15 +60,17 @@ class NoGlobalStateTests(unittest.TestCase):
                 return True
 
         def call(n):
-            with mock.patch("runtime.get_runtime", return_value=SlowRuntime(angles=angles)):
-                seen[n] = harness.deep_research("q", show_dashboard=False, angles=n)
+            seen[n] = harness.deep_research("q", show_dashboard=False, angles=n)
 
         threads = [threading.Thread(target=call, args=(n,)) for n in (1, 4)]
         before = dict(os.environ)
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join(10)
+        # Patch ONCE, outside the threads: nesting mock.patch across threads can leave the
+        # patched attribute permanently replaced.
+        with mock.patch("runtime.get_runtime", side_effect=lambda name=None: SlowRuntime(angles=angles)):
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join(10)
         self.assertEqual({n: r["stats"]["angles"] for n, r in seen.items()}, {1: 1, 4: 4})
         self.assertEqual(dict(os.environ), before)
 
