@@ -171,3 +171,22 @@ class PromptHygieneTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PromptShapeTests(unittest.TestCase):
+    def test_every_prompt_states_the_required_json_keys(self):
+        """Agents (Hermes, Claude, Kimi…) follow the shape stated in the prompt, not our schema object."""
+        from core import schemas
+        claim = {"claim": "c", "quote": "q", "sourceUrl": U1, "sourceQuality": "blog",
+                 "verdicts": [], "refutedVotes": 0}
+        cases = [
+            (prompts.scope("q", 3), schemas.SCOPE_SCHEMA),
+            (prompts.search({"label": "L", "query": "q", "rationale": "r"}, "q"), schemas.SEARCH_SCHEMA),
+            (prompts.fetch({"url": U1, "title": "t"}, "q", "A", "text"), schemas.EXTRACT_SCHEMA),
+            (prompts.verify(claim, "q", 0, 2), schemas.VERDICT_SCHEMA),
+            (prompts.synthesis("q", [claim], [], [], 2), schemas.REPORT_SCHEMA),
+        ]
+        for prompt, schema in cases:
+            for key in schema["required"]:
+                with self.subTest(schema=sorted(schema["properties"])[:2], key=key):
+                    self.assertIn(f'"{key}"', prompt)

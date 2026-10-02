@@ -132,9 +132,10 @@ class KeylessRunTests(unittest.TestCase):
     def test_json_error_without_api_key(self):
         env = {k: v for k, v in os.environ.items()
                if k not in {"DEEPSEEK_API_KEY"} and not k.endswith("_CLI")
-               and k not in {"HERMES_AGENT", "CLAUDE_CODE", "OPENCLAW_MODE", "AIDER_CHAT_MODE", "AIDER_VERSION", "CLINE_MCP", "DR_RUNTIME"}}
+               and not k.startswith("CLAUDE") and k not in {"HERMES_AGENT", "AIDER_CHAT_MODE", "AIDER_VERSION", "CLINE_MCP", "DR_RUNTIME"}}
         with tempfile.TemporaryDirectory() as home:
             env["HOME"] = home  # no ~/.env fallback key
+            env["DR_RUNTIME"] = "generic"  # never auto-detect a platform CLI during the test
             proc = subprocess.run(
                 [sys.executable, os.path.join(ROOT, "harness.py"), "test", "--format", "json",
                  "-o", os.path.join(home, "out.json")],

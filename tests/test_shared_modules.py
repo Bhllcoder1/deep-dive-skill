@@ -206,11 +206,96 @@ class DdgParserTests(unittest.TestCase):
         self.assertEqual(parse_ddg_html(None, 5), [])  # type: ignore[arg-type]
         self.assertEqual(unwrap_ddg_url("https://a.example/x"), "https://a.example/x")
 
+    def setUp(self):
+        from core import websearch
+        websearch.reset_ddg_state()
+        self.addCleanup(websearch.reset_ddg_state)
+
     def test_curl_search_uses_runner_and_handles_failure(self):
         from core.websearch import ddg_html_search_with_curl
 
         class Proc:
-            returncode, stdout = 0, DdgParserTests.PAGE
-        self.assertEqual(len(ddg_html_search_with_curl("q", 5, runner=lambda *a, **k: Proc())), 2)
+            returncode, stdout = 0, DdgParserTests.PAGE + "\n200"
+        nosleep = lambda s: None
+        self.assertEqual(len(ddg_html_search_with_curl("q", 5, runner=lambda *a, **k: Proc(), sleep=nosleep)), 2)
         Proc.returncode = 22
-        self.assertEqual(ddg_html_search_with_curl("q", 5, runner=lambda *a, **k: Proc()), [])
+        self.assertEqual(ddg_html_search_with_curl("q", 5, runner=lambda *a, **k: Proc(), sleep=nosleep), [])
+
+    def test_bot_challenge_trips_the_breaker_and_skips_later_calls(self):
+        from core import websearch
+
+        class Challenge:
+            returncode, stdout = 0, '<div class="anomaly-modal">x</div>\n202'
+        calls = []
+
+        def runner(*a, **k):
+            calls.append(1)
+            return Challenge()
+        nosleep = lambda s: None
+        with self.assertLogs("deepdive.websearch", level="WARNING"):
+            self.assertEqual(websearch.ddg_html_search_with_curl("q", 5, runner=runner, sleep=nosleep), [])
+        self.assertTrue(websearch.ddg_blocked())
+        self.assertEqual(websearch.ddg_html_search_with_curl("q", 5, runner=runner, sleep=nosleep), [])
+        self.assertEqual(len(calls), 1, "the second call must not hit DuckDuckGo")
+
+    def test_requests_are_spaced_out(self):
+        from core.websearch import ddg_html_search_with_curl
+        slept = []
+
+        class Ok:
+            returncode, stdout = 0, "\n200"
+        for _ in range(2):
+            ddg_html_search_with_curl("q", 5, runner=lambda *a, **k: Ok(), sleep=slept.append)
+        self.assertEqual(len(slept), 1)
+        self.assertGreater(slept[0], 0)
+
+
+class SearchChainTests(unittest.TestCase):
+    def setUp(self):
+        from core import websearch
+        websearch.reset_ddg_state()
+        self.addCleanup(websearch.reset_ddg_state)
+
+    @staticmethod
+    def _runner(routes):
+        def run(cmd, **kwargs):
+            url = cmd[-1]
+            for needle, (code, out) in routes.items():
+                if needle in url:
+                    return type("P", (), {"returncode": code, "stdout": out})()
+            return type("P", (), {"returncode": 22, "stdout": ""})()
+        return run
+
+    def test_wikipedia_is_the_keyless_last_resort(self):
+        import json as _json
+        from unittest import mock as _mock
+        from core import websearch
+        wiki = _json.dumps({"query": {"search": [{"title": "Rust (programming language)", "snippet": "a <b>language</b>"}]}})
+        runner = self._runner({"duckduckgo": (0, '<x class="anomaly-modal">\n202'), "wikipedia.org": (0, wiki)})
+        with _mock.patch.object(websearch.time, "sleep"), _mock.patch.dict("os.environ", {}, clear=True):
+            results = websearch.web_search_chain("rust", 3, runner=runner)
+        self.assertEqual(results[0]["url"], "https://en.wikipedia.org/wiki/Rust_%28programming_language%29")
+        self.assertEqual(results[0]["snippet"], "a language")
+
+    def test_brave_is_first_when_keyed_and_key_stays_out_of_argv(self):
+        import json as _json
+        from unittest import mock as _mock
+        from core import websearch
+        seen = []
+        payload = _json.dumps({"web": {"results": [{"url": "https://a.example/x", "title": "A", "description": "d"},
+                                                   {"url": "http://127.0.0.1/", "title": "bad"}]}})
+
+        def runner(cmd, **kwargs):
+            seen.append(cmd)
+            return type("P", (), {"returncode": 0, "stdout": payload})()
+        with _mock.patch.dict("os.environ", {"BRAVE_API_KEY": "brave-secret-key-123"}, clear=True):
+            results = websearch.web_search_chain("q", 5, runner=runner)
+        self.assertEqual([r["url"] for r in results], ["https://a.example/x"])
+        self.assertEqual(len(seen), 1)
+        self.assertFalse(any("brave-secret-key-123" in part for part in seen[0]))
+
+    def test_everything_down_returns_empty(self):
+        from unittest import mock as _mock
+        from core import websearch
+        with _mock.patch.object(websearch.time, "sleep"), _mock.patch.dict("os.environ", {}, clear=True):
+            self.assertEqual(websearch.web_search_chain("q", 3, runner=self._runner({})), [])

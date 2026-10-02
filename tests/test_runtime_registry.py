@@ -64,9 +64,12 @@ class DetectTests(unittest.TestCase):
             with self.subTest(flag=flag), mock.patch.dict(os.environ, {flag: "x"}, clear=True):
                 self.assertEqual(runtime.detect(), expected)
 
-    def test_claude_code_flag(self):
-        with mock.patch.dict(os.environ, {"CLAUDE_CODE": "1"}, clear=True):
-            self.assertEqual(runtime.detect(), "claude_code")
+    def test_claude_code_flags(self):
+        for env in ({"CLAUDE_CODE": "1"}, {"CLAUDECODE": "1"}, {"CLAUDE_CODE_ENTRYPOINT": "cli"}):
+            with self.subTest(env=env), mock.patch.dict(os.environ, env, clear=True):
+                self.assertEqual(runtime.detect(), "claude_code")
+        with mock.patch.dict(os.environ, {"CLAUDECODE": "0"}, clear=True):
+            self.assertEqual(runtime.detect(), "generic")
 
     def test_default_is_generic_and_force_wins(self):
         with mock.patch.dict(os.environ, {}, clear=True):

@@ -25,9 +25,10 @@ from core.logs import get_logger
 from core.parallel import run_bounded
 from core.safefetch import fetch_text_with_curl, secret_header_file
 from core.urlsafe import is_public_http_url
-from core.websearch import ddg_html_search_with_curl
+from core.websearch import web_search_chain
 
 from .base import BaseRuntime
+from .cli import run_cli_json
 
 
 _LOG = get_logger("runtime.hermes")
@@ -47,17 +48,31 @@ class HermesRuntime(BaseRuntime):
     def __init__(self):
         self._api_key = ""
         self._ready = False
+        self._failures = 0
+        self._hermes_cmd = self._resolve_hermes()
+
+    @staticmethod
+    def _resolve_hermes() -> Optional[list]:
+        """Hermes'in kendi tek-atış modu (`hermes -z PROMPT`, canlı doğrulandı): kendi yapılandırılmış
+        sağlayıcısını kullanır, ayrı API anahtarı gerektirmez. `DR_HERMES_CLI=0` ile kapatılır."""
+        if os.environ.get("DR_HERMES_CLI", "1") == "0":
+            return None
+        found = shutil.which("hermes")
+        return [found, "-z"] if found else None
 
     def setup(self) -> bool:
-        """API key ve curl kullanılabilirliğini kontrol eder."""
+        """Hermes CLI'ı ya da API key + curl kullanılabilirliğini kontrol eder."""
         self._ready = False
         self._api_key = self._find_api_key()
-        if not self._api_key:
-            _LOG.error("[hermes] ❌ DEEPSEEK_API_KEY bulunamadı. ~/.env veya environment değişkenine ekleyin.")
-            return False
-
         if not shutil.which("curl"):
-            _LOG.error("[hermes] ❌ curl bulunamadı. Hermes runtime curl gerektirir.")
+            _LOG.error("[hermes] ❌ curl bulunamadı. Hermes runtime arama/fetch için curl gerektirir.")
+            return False
+        if self._hermes_cmd:
+            self._ready = True
+            _LOG.info("[hermes] ✅ Runtime hazır (hermes -z" + (", API yedeği hazır)" if self._api_key else ")"))
+            return True
+        if not self._api_key:
+            _LOG.error("[hermes] ❌ DEEPSEEK_API_KEY bulunamadı. ~/.env, ~/.hermes/.env veya environment değişkenine ekleyin.")
             return False
 
         self._ready = True
@@ -70,16 +85,17 @@ class HermesRuntime(BaseRuntime):
         if key:
             return key
 
-        try:
-            with open(os.path.expanduser("~/.env"), encoding="utf-8") as env_file:
-                for line in env_file:
-                    match = re.match(r"\s*(?:export\s+)?DEEPSEEK_API_KEY\s*=\s*(.*?)\s*$", line, re.IGNORECASE)
-                    if match:
-                        key = self._clean_api_key(match.group(1))
-                        if key:
-                            return key
-        except (FileNotFoundError, OSError, UnicodeError):
-            pass
+        for env_path in ("~/.env", "~/.hermes/.env"):
+            try:
+                with open(os.path.expanduser(env_path), encoding="utf-8") as env_file:
+                    for line in env_file:
+                        match = re.match(r"\s*(?:export\s+)?DEEPSEEK_API_KEY\s*=\s*(.*?)\s*$", line, re.IGNORECASE)
+                        if match:
+                            key = self._clean_api_key(match.group(1))
+                            if key:
+                                return key
+            except (FileNotFoundError, OSError, UnicodeError):
+                pass
 
         # The previous implementation read zero bytes from this file, so this
         # branch could never find a key. Support the common nested YAML shape:
@@ -133,6 +149,15 @@ class HermesRuntime(BaseRuntime):
             self.log("agent çağrısı geçersiz schema nedeniyle atlandı")
             return None
         if not self._ready and not self.setup():
+            return None
+
+        if self._hermes_cmd and self._failures < 3:
+            result = run_cli_json(self._hermes_cmd, prompt, schema, prompt_mode="arg", timeout=120, tag="hermes")
+            self._failures = 0 if result is not None else self._failures + 1
+            if result is not None:
+                return result
+        if not self._api_key:
+            self.log("agent çağrısı: hermes -z başarısız ve API anahtarı yok")
             return None
 
         endpoint = self._chat_endpoint()
@@ -260,7 +285,7 @@ class HermesRuntime(BaseRuntime):
             return []
         self.log(f"web_search: {query[:60]}...")
 
-        results = ddg_html_search_with_curl(query, limit, "curl", user_agent=self.USER_AGENT)
+        results = web_search_chain(query, limit, "curl", user_agent=self.USER_AGENT)
         if not results:
             self.log("DDG search sonuç vermedi veya başarısız oldu")
         return results

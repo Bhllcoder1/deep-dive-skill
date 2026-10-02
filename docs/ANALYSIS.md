@@ -101,6 +101,11 @@
 | N8 | DÜŞÜK | `requests` başarısız olunca aynı ücretli çağrı curl ile tekrarlanır; 120 s deadline ile birleşince oylar `None` kalabilir | generic.py:141-143, 474 | `51ec850` |
 | N9 | DÜŞÜK | `DR_RUNTIME` doğrulanmaz; bilinmeyen ad sessizce generic | runtime/__init__.py:52-54, 155-157 | `51ec850` (uyarı loglanır) |
 | N10 | DÜŞÜK | `CLAUDE_CODE` `=="1"` (runtime/__init__.py:58) vs truthy (parallel.py:28); API base `/v1` farkı (generic.py:97, hermes.py:114 vs claude_code.py:129); `cmd = None` ölü atama (codex.py:80); harness hep dosya yazar (351-359); isim karmaşası (harness.py:98, 196; dashboard.py:133, 536) | ilgili satırlar | **açık** (kozmetik) |
+| N12 | **KRİTİK** | Gerçek CLI'lar stdin'e verilen çıplak prompt'ta headless çalışmaz; `antigravity`/`windsurf` editör başlatıcıları ajan CLI'ı sanılıp çalıştırılıyordu; CLI ajanları kullanıcının çalışma dizininde çalışıyordu | `runtime/cli.py` (eski), `antigravity --help` | düzeltildi (docs/PLATFORMS.md) |
+| N13 | YÜKSEK | Claude Code gerçekte `CLAUDECODE=1` ayarlar; `CLAUDE_CODE=1` aranıyordu → otomatik algılama hiç çalışmıyordu; `setup()` anahtarsız `True` dönüyordu | `runtime/__init__.py:58`, `claude_code.py:42-44` | düzeltildi + `claude -p` kanalı |
+| N14 | YÜKSEK | Sentez prompt'u çıktı şeklini tarif etmiyordu; gerçek ajanlar kendi şemasını üretip reddedildi (gerçek E2E koşusunda bulundu) | `core/prompts.py` `synthesis` | düzeltildi + test |
+| N15 | YÜKSEK | DuckDuckGo HTML ucu bot challenge (HTTP 202 "anomaly") döndürüyor → `web_search` boş → LLM URL uydurma yedeği | canlı gözlem | throttle + breaker + Wikipedia/Brave |
+| N16 | ORTA | Hermes anahtarı `~/.hermes/.env`'de aramıyordu; kendi `hermes -z` kanalını kullanmıyordu | `hermes.py:67-109` | düzeltildi |
 | N11 | — | Ek (bu çalışmada): bir sentez raporu geçerli özet taşıyıp hiçbir doğrulanmış kaynağı citelemediğinde doğrulanmış iddialar sessizce kayboluyordu (`_valid_report` boş `findings` ile de rapor döndürüyordu) | engine.py:404-407 | `be49fc9` (salvage tetiklenir) |
 
 ## 5. Eksikler (olması gerekip olmayanlar)

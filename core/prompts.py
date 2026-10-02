@@ -86,5 +86,7 @@ def synthesis(question: str, confirmed: List[dict], killed: List[dict], unverifi
         "3. Assign confidence: high (multiple primary sources), medium, low.\n"
         "4. Every finding must cite one or more confirmed source URLs exactly as supplied.\n"
         "5. Write a 3-5 sentence executive summary using only confirmed claims, and note caveats/open questions.\n\n"
-        "Valid JSON only."
+        'Return JSON exactly in this shape (no other keys): {"summary":"...","findings":[{"claim":"...",'
+        '"confidence":"high|medium|low","sources":["<a confirmed source URL>"],"evidence":"...","vote":"2-0"}],'
+        '"caveats":"...","openQuestions":["..."]}\nValid JSON only.'
     )

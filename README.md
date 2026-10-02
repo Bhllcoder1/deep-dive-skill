@@ -56,25 +56,25 @@ python3 -m unittest discover -s tests -v
 
 ## Platform Support
 
-All 15 adapters are registered in `runtime/__init__.py`. The ten CLI adapters are thin subclasses of one `CliRuntime` base (`runtime/cli.py`): each agent prompt goes to the local CLI on standard input (never through a shell), JSON is parsed from its output, and calls run in the shared bounded worker pool; if the CLI is missing, fails, or returns invalid JSON, they fall back to `GenericRuntime`. Search and fetch always use the generic helpers, so they work without an LLM API key.
+All 15 adapters are registered in `runtime/__init__.py`. The ten CLI adapters are thin subclasses of one `CliRuntime` base (`runtime/cli.py`): each agent prompt goes to the local CLI in its **headless mode** (per-platform flags, prompt on stdin or as the last argument, never through a shell, run in an empty temp directory), JSON is parsed from its output, and calls run in the shared bounded worker pool; if the CLI is missing, fails (3 failures in a row disable it for the run), or returns invalid JSON, they fall back to `GenericRuntime`. Windsurf, Antigravity, GLM and MiniMax have no known headless agent CLI (`windsurf`/`antigravity` are editor launchers), so they use the generic API unless you set their `*_CLI` override. How each platform was verified: [`docs/PLATFORMS.md`](docs/PLATFORMS.md). Search and fetch always use the generic helpers, so they work without an LLM API key.
 
 | Platform | Runtime name | Selection | Agent execution path | Search/fetch path |
 |----------|--------------|-----------|----------------------|-------------------|
-| Hermes Agent | `hermes` | `HERMES_AGENT` or `DR_RUNTIME=hermes` | Hermes runtime; no platform CLI shell-out | Adapter HTTP/curl path |
-| Claude Code | `claude_code` | `CLAUDE_CODE=1` or `DR_RUNTIME=claude_code` | Emits bridge markers, then uses the generic API fallback because the bundled bridge is request-only | Emits bridge markers, then curl fallback |
+| Hermes Agent | `hermes` | `HERMES_AGENT` or `DR_RUNTIME=hermes` | `hermes -z <prompt>` (its own provider, no key needed), else DeepSeek-compatible API | Shared search chain + safe curl fetch |
+| Claude Code | `claude_code` | `CLAUDECODE=1` (set by Claude Code), `CLAUDE_CODE=1`, or `DR_RUNTIME=claude_code` | `claude -p` headless (tools off, no session file; opt out with `DR_CLAUDE_HEADLESS=0`), else API fallback; bridge markers are request-only | Shared search chain + safe curl fetch |
 | Generic Python | `generic` | Default or `DR_RUNTIME=generic` | OpenAI-compatible API via `requests` or `curl` | DuckDuckGo HTML; optional Google Custom Search or SearXNG |
 | Aider | `aider` | `AIDER_CHAT_MODE`/`AIDER_VERSION` or forced | **Generic-only** (`GenericRuntime`); no Aider CLI shell-out | Generic search/fetch |
-| Codex CLI | `codex` | `CODEX_CLI` or forced | Local `codex` CLI, else generic fallback | Generic search/fetch |
+| Codex CLI | `codex` | `CODEX_CLI` or forced | Local `codex exec -` (read-only sandbox), else generic fallback | Generic search/fetch |
 | Cline / Roo Code | `cline` | `CLINE_MCP` or forced | **Generic-only** (`GenericRuntime`); no Cline/Roo CLI shell-out | Generic search/fetch; `MCP_WEB_SEARCH_URL` is only reported during setup |
-| Cursor Agent | `cursor` | `CURSOR_CLI` or forced | Local `cursor-agent` CLI, else generic fallback | Generic search/fetch |
-| Gemini CLI | `gemini` | `GEMINI_CLI` or forced | Local `gemini` CLI, else generic fallback | Generic search/fetch |
-| GitHub Copilot | `copilot` | `COPILOT_CLI` or forced | Local `copilot`, then `gh copilot`, else generic fallback | Generic search/fetch |
-| Amazon Q Developer | `amazon_q` | `AMAZON_Q_CLI` or forced | Local `q` CLI, else generic fallback | Generic search/fetch |
-| Windsurf | `windsurf` | `WINDSURF_CLI` or forced | Local `windsurf` CLI, else generic fallback | Generic search/fetch |
-| Kimi Code | `kimi` | `KIMI_CLI` or forced | Local `kimi`, then `~/.kimi-code/bin/kimi`, else generic fallback | Generic search/fetch |
-| GLM Code (Z.ai) | `glm` | `GLM_CLI` or forced | Local `glm`, then `zai`, else generic fallback | Generic search/fetch |
-| MiniMax Code | `minimax` | `MINIMAX_CLI` or forced | Local `minimax` CLI, else generic fallback | Generic search/fetch |
-| Google Antigravity CLI | `antigravity` | `ANTIGRAVITY_CLI` or forced | Local `antigravity` CLI, else generic fallback; its interactive `/agent` and `/agents` commands are not used | Generic search/fetch |
+| Cursor Agent | `cursor` | `CURSOR_CLI` or forced | Local `cursor-agent -p` (unverified), else generic fallback | Generic search/fetch |
+| Gemini CLI | `gemini` | `GEMINI_CLI` or forced | Local `gemini -p … -o text` with the prompt on stdin, else generic fallback | Generic search/fetch |
+| GitHub Copilot | `copilot` | `COPILOT_CLI` or forced | Local `copilot -p` (unverified; `gh copilot` is not a scriptable agent), else generic fallback | Generic search/fetch |
+| Amazon Q Developer | `amazon_q` | `AMAZON_Q_CLI` or forced | Local `q chat --no-interactive` (unverified), else generic fallback | Generic search/fetch |
+| Windsurf | `windsurf` | `WINDSURF_CLI` or forced | Generic API (the `windsurf` binary is an editor launcher); `WINDSURF_CLI` can name a headless command | Generic search/fetch |
+| Kimi Code | `kimi` | `KIMI_CLI` or forced | Local `kimi -p` (also `~/.kimi-code/bin/kimi`), else generic fallback | Generic search/fetch |
+| GLM Code (Z.ai) | `glm` | `GLM_CLI` or forced | Generic API (no known headless GLM CLI); `GLM_CLI` can name one | Generic search/fetch |
+| MiniMax Code | `minimax` | `MINIMAX_CLI` or forced | Generic API (no known headless MiniMax CLI); `MINIMAX_CLI` can name one | Generic search/fetch |
+| Google Antigravity CLI | `antigravity` | `ANTIGRAVITY_CLI` or forced | Generic API (the `antigravity` binary is a VS Code-style editor launcher and is never run); `ANTIGRAVITY_CLI` can name a headless command | Generic search/fetch |
 
 All adapters expose bounded parallel work to the pipeline; `DR_MAX_WORKERS` controls the verifier concurrency and is hard-capped at 20.
 
@@ -149,7 +149,11 @@ Any individual `DR_*` setting below overrides its tier value, so you can start f
 | `DR_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR`. Logs go to stderr; secrets are redacted. |
 | `DR_LOG_FORMAT` | `text` | `json` emits one JSON object per line with `ts`, `level`, `logger`, `run_id`, `msg`. |
 | `GOOGLE_API_KEY` + `GOOGLE_CX` | — | Enable Google Custom Search when DuckDuckGo returns no results. Both are required. |
-| `SearXNG_URL` | — | HTTP(S) URL for a self-hosted SearXNG instance, queried first by the generic runtime; DuckDuckGo is used if it is unavailable or empty. |
+| `BRAVE_API_KEY` | — | Optional: Brave Search API, tried before DuckDuckGo (key goes in a 0600 header file, never argv). |
+| `DR_WIKI_LANG` | `en` | Wikipedia language for the keyless last-resort search backend. |
+| `DR_CLAUDE_HEADLESS` / `CLAUDE_CLI` | `1` / — | `0` disables the `claude -p` agent channel; `CLAUDE_CLI` overrides its command. |
+| `DR_HERMES_CLI` | `1` | `0` disables the `hermes -z` agent channel. |
+| `SearXNG_URL` | — | HTTP(S) URL for a self-hosted SearXNG instance, queried first by the generic runtime; DuckDuckGo is used if it is unavailable or empty. DuckDuckGo's HTML endpoint rate-limits bursts with a bot challenge; requests are spaced out, a challenge disables it for 5 minutes, and the chain continues with Wikipedia. For dependable search set `SearXNG_URL` or `BRAVE_API_KEY`. |
 | `LLM_PROVIDER` | `deepseek` | Dashboard/monitor provider selection. |
 | `LLM_API_KEY` | — | Explicit dashboard/monitor API key. |
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `KIMI_API_KEY`, `QWEN_API_KEY`, `GEMINI_API_KEY`, `MINIMAX_API_KEY`, `ZHIPU_API_KEY` | — | Provider-specific keys recognized by the dashboard/monitor when `LLM_PROVIDER` selects the corresponding provider. The generic pipeline runtime itself uses `DEEPSEEK_API_KEY`. |
@@ -172,7 +176,7 @@ Every CLI-backed adapter accepts a command/path override. The value is split wit
 | `MINIMAX_CLI` | MiniMax Code |
 | `ANTIGRAVITY_CLI` | Google Antigravity CLI |
 
-Auto-detection also recognizes `HERMES_AGENT`, `CLAUDE_CODE=1`, `AIDER_CHAT_MODE` or `AIDER_VERSION`, and `CLINE_MCP`. (Detection of the old `OPENCLAW_MODE` flag was removed: it never had an adapter and always fell back to the generic runtime.) New adapters are added with one `runtime.register(name, Class, detect_env=...)` call.
+Auto-detection also recognizes `HERMES_AGENT`, `CLAUDECODE=1` / `CLAUDE_CODE_ENTRYPOINT` / `CLAUDE_CODE=1`, `AIDER_CHAT_MODE` or `AIDER_VERSION`, and `CLINE_MCP`. (Detection of the old `OPENCLAW_MODE` flag was removed: it never had an adapter and always fell back to the generic runtime.) New adapters are added with one `runtime.register(name, Class, detect_env=...)` call.
 
 ## Python API
 
@@ -216,7 +220,7 @@ core/
   jsonparse.py                      ← The single JSON-object extractor
   urlsafe.py                        ← The single URL-safety gate (lexical + DNS checks)
   safefetch.py                      ← Redirect-checked, IP-pinned curl fetch; HTML→text; secret header files
-  websearch.py                      ← The single DuckDuckGo HTML parser/search
+  websearch.py                      ← The single search chain: Brave (keyed) → DuckDuckGo HTML (throttled, breaker) → Wikipedia
   parallel.py                       ← run_bounded(): the one bounded-parallel primitive
   logs.py                           ← logging setup (stderr, secret redaction, JSON option, run id)
   dashboard.py                      ← Terminal dashboard, controller, and run history
@@ -252,6 +256,7 @@ Each phase has a wall-clock budget (`--phase-budget`), and `stats` reports the r
 
 ## Documentation
 
+- [`docs/PLATFORMS.md`](docs/PLATFORMS.md) — per-platform review of all 15 adapters: headless command, how it was verified, mismatches fixed, remaining gaps
 - [`docs/ANALYSIS.md`](docs/ANALYSIS.md) — module responsibilities, README-vs-code differences, findings (missing / redundant), what was fixed and what was removed
 - [`docs/SYSTEM_DESIGN.md`](docs/SYSTEM_DESIGN.md) — SOLID / DRY / security / reliability / observability review, applied vs. proposed changes, target architecture
 - [`docs/architecture-current.excalidraw`](docs/architecture-current.excalidraw) — architecture as reviewed (baseline), with trust boundaries and violations marked

@@ -1,13 +1,34 @@
-"""Shared DuckDuckGo HTML search: the one parser and the one curl search call."""
+"""Shared web search: one backend chain used by every runtime.
+
+Order: Brave Search API (only if BRAVE_API_KEY is set) → DuckDuckGo HTML → Wikipedia.
+
+DuckDuckGo's HTML endpoint answers bursts with an anti-bot challenge (HTTP 202 and an
+"anomaly" page). Requests are therefore spaced out, and once a challenge is seen the
+endpoint is skipped for a while so the chain moves on immediately (circuit breaker).
+Wikipedia's official API needs no key and is the last resort: sparse, but real sources
+instead of model-invented URLs.
+"""
 
 import html
+import json
+import os
 import re
 import subprocess
+import threading
+import time
 import urllib.parse
-from typing import Any, Callable, List
+from typing import Any, Callable, List, Optional
 
-from core.safefetch import USER_AGENT
+from core.logs import get_logger
+from core.safefetch import USER_AGENT, secret_header_file
 from core.urlsafe import normalize_public_url
+
+_LOG = get_logger("websearch")
+DDG_MIN_INTERVAL_S = 1.5
+DDG_BLOCK_SECONDS = 300
+_ddg_lock = threading.Lock()
+_ddg_last = 0.0
+_ddg_blocked_until = 0.0
 
 _ANCHOR = re.compile(
     r'<a[^>]+class=["\'][^"\']*\bresult__a\b[^"\']*["\'][^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',
@@ -50,16 +71,108 @@ def parse_ddg_html(page: str, max_results: int) -> List[dict]:
     return results
 
 
+def ddg_blocked() -> bool:
+    return time.monotonic() < _ddg_blocked_until
+
+
+def reset_ddg_state() -> None:
+    """Forget the throttle/breaker state (tests)."""
+    global _ddg_last, _ddg_blocked_until
+    _ddg_last = _ddg_blocked_until = 0.0
+
+
 def ddg_html_search_with_curl(query: str, max_results: int, curl_path: str = "curl", *,
-                              user_agent: str = USER_AGENT, runner: Callable[..., Any] = subprocess.run
-                              ) -> List[dict]:
-    url = "https://html.duckduckgo.com/html/?" + urllib.parse.urlencode({"q": query})
-    try:
-        proc = runner(
-            [curl_path, "--silent", "--show-error", "--fail", "--location", "--max-redirs", "3",
-             "--proto", "=http,https", "--connect-timeout", "5", "--max-time", "15",
-             "-A", user_agent, "--", url],
-            capture_output=True, text=True, errors="replace", timeout=20)
-    except (OSError, subprocess.SubprocessError):
+                              user_agent: str = USER_AGENT, runner: Callable[..., Any] = subprocess.run,
+                              sleep: Callable[[float], None] = time.sleep) -> List[dict]:
+    global _ddg_last, _ddg_blocked_until
+    if ddg_blocked():
         return []
-    return parse_ddg_html(proc.stdout, max_results) if proc.returncode == 0 else []
+    url = "https://html.duckduckgo.com/html/?" + urllib.parse.urlencode({"q": query})
+    with _ddg_lock:  # space requests out: bursts trigger the bot challenge
+        wait = _ddg_last + DDG_MIN_INTERVAL_S - time.monotonic()
+        if wait > 0:
+            sleep(wait)
+        _ddg_last = time.monotonic()
+        try:
+            proc = runner(
+                [curl_path, "--silent", "--show-error", "--location", "--max-redirs", "3",
+                 "--proto", "=http,https", "--connect-timeout", "5", "--max-time", "15",
+                 "-A", user_agent, "-w", "\n%{http_code}", "--", url],
+                capture_output=True, text=True, errors="replace", timeout=20)
+        except (OSError, subprocess.SubprocessError):
+            return []
+    if proc.returncode != 0:
+        return []
+    body, _, code = (proc.stdout or "").rpartition("\n")
+    if code.strip() == "202" or "anomaly-modal" in body or "anomaly.js" in body:
+        _ddg_blocked_until = time.monotonic() + DDG_BLOCK_SECONDS
+        _LOG.warning(f"DuckDuckGo returned a bot challenge; skipping it for {DDG_BLOCK_SECONDS}s "
+                     "(set SearXNG_URL or BRAVE_API_KEY for a dependable backend)")
+        return []
+    return parse_ddg_html(body, max_results)
+
+
+def _curl_json(url: str, curl_path: str, headers: Optional[dict] = None,
+               runner: Callable[..., Any] = subprocess.run) -> Optional[Any]:
+    try:
+        with secret_header_file(headers or {"Accept": "application/json"}) as header_path:
+            proc = runner([curl_path, "--silent", "--fail", "--connect-timeout", "5", "--max-time", "15",
+                           "-A", USER_AGENT, "-H", f"@{header_path}", "--", url],
+                          capture_output=True, text=True, errors="replace", timeout=20)
+        return json.loads(proc.stdout) if proc.returncode == 0 else None
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+
+
+def _result(url: Any, title: Any, snippet: Any, relevance: str = "medium") -> Optional[dict]:
+    safe = normalize_public_url(url)
+    title = _clean(str(title or ""))
+    return {"url": safe, "title": title, "snippet": _clean(str(snippet or "")), "relevance": relevance} \
+        if safe and title else None
+
+
+def brave_search(query: str, max_results: int, curl_path: str = "curl",
+                 runner: Callable[..., Any] = subprocess.run) -> List[dict]:
+    """Brave Search API (https://api.search.brave.com); needs BRAVE_API_KEY."""
+    key = os.environ.get("BRAVE_API_KEY", "").strip()
+    if not key:
+        return []
+    url = "https://api.search.brave.com/res/v1/web/search?" + urllib.parse.urlencode(
+        {"q": query, "count": min(max_results, 20)})
+    data = _curl_json(url, curl_path, {"Accept": "application/json", "X-Subscription-Token": key}, runner)
+    items = ((data or {}).get("web") or {}).get("results") if isinstance(data, dict) else None
+    results = [r for r in (_result(i.get("url"), i.get("title"), i.get("description"))
+                           for i in (items or []) if isinstance(i, dict)) if r]
+    return results[:max_results]
+
+
+def wikipedia_search(query: str, max_results: int, curl_path: str = "curl",
+                     runner: Callable[..., Any] = subprocess.run) -> List[dict]:
+    """Wikipedia's official search API (no key). Language: DR_WIKI_LANG (default en)."""
+    lang = re.sub(r"[^a-z-]", "", os.environ.get("DR_WIKI_LANG", "en").lower()) or "en"
+    url = f"https://{lang}.wikipedia.org/w/api.php?" + urllib.parse.urlencode(
+        {"action": "query", "list": "search", "srsearch": query, "format": "json", "srlimit": max_results})
+    data = _curl_json(url, curl_path, None, runner)
+    items = ((data or {}).get("query") or {}).get("search") if isinstance(data, dict) else None
+    results = []
+    for item in items or []:
+        if isinstance(item, dict) and item.get("title"):
+            title = str(item["title"])
+            page = f"https://{lang}.wikipedia.org/wiki/" + urllib.parse.quote(title.replace(" ", "_"))
+            found = _result(page, title, item.get("snippet"), "low")
+            if found:
+                results.append(found)
+    return results[:max_results]
+
+
+def web_search_chain(query: str, max_results: int, curl_path: str = "curl", *,
+                     user_agent: str = USER_AGENT, runner: Callable[..., Any] = subprocess.run) -> List[dict]:
+    """Brave (if keyed) → DuckDuckGo HTML → Wikipedia; first non-empty answer wins."""
+    for backend in (lambda: brave_search(query, max_results, curl_path, runner),
+                    lambda: ddg_html_search_with_curl(query, max_results, curl_path,
+                                                      user_agent=user_agent, runner=runner),
+                    lambda: wikipedia_search(query, max_results, curl_path, runner)):
+        results = backend()
+        if results:
+            return results
+    return []

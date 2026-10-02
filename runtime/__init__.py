@@ -27,6 +27,8 @@ RuntimeTarget = Union[Type[BaseRuntime], str]
 _RUNTIME_REGISTRY: Dict[str, RuntimeTarget] = {}
 # (environment variable, runtime name) in detection priority order.
 _DETECTION: List[Tuple[str, str]] = []
+# Flags that only count when exactly "1" (other values such as "0" mean off).
+_STRICT_ONE = {"CLAUDE_CODE", "CLAUDECODE"}
 
 
 def register(name: str, runtime: RuntimeTarget, detect_env: Optional[str] = None) -> None:
@@ -52,7 +54,7 @@ def detect() -> str:
         return force
     for env_var, name in _DETECTION:
         value = os.environ.get(env_var)
-        if value == "1" if env_var == "CLAUDE_CODE" else value:
+        if value == "1" if env_var in _STRICT_ONE else value:
             return name
     return "generic"
 
@@ -97,7 +99,12 @@ _BUILTIN = [
 ]
 for _name, _target, _flag in _BUILTIN:
     register(_name, _target, _flag)
-# AIDER_VERSION is a second detection flag for the same adapter.
-_DETECTION.insert(_DETECTION.index(("AIDER_CHAT_MODE", "aider")) + 1, ("AIDER_VERSION", "aider"))
+# Extra detection flags for the same adapters, inserted right after their primary flag.
+# CLAUDECODE=1 is what the real Claude Code sets (CLAUDE_CODE=1 is this project's own
+# convention); CLAUDE_CODE_ENTRYPOINT is also set by Claude Code sessions.
+for _primary, _extra in (("AIDER_CHAT_MODE", "AIDER_VERSION"), ("CLAUDE_CODE", "CLAUDECODE"),
+                         ("CLAUDE_CODE", "CLAUDE_CODE_ENTRYPOINT")):
+    _name = dict(_DETECTION)[_primary]
+    _DETECTION.insert(_DETECTION.index((_primary, _name)) + 1, (_extra, _name))
 
 __all__ = ["BaseRuntime", "get_runtime", "detect", "register", "registered_names"]

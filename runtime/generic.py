@@ -16,7 +16,7 @@ from core.logs import get_logger
 from core.parallel import run_bounded
 from core.safefetch import USER_AGENT as _USER_AGENT, fetch_text_with_curl, html_to_text, secret_header_file
 from core.urlsafe import is_public_http_url, is_safe_to_connect
-from core.websearch import ddg_html_search_with_curl, parse_ddg_html
+from core.websearch import ddg_blocked, parse_ddg_html, web_search_chain
 
 from .base import BaseRuntime
 
@@ -290,6 +290,8 @@ class GenericRuntime(BaseRuntime):
         query = query.strip()[:2000]
 
         results = self._searxng_results(query, max_results)
+        if not results and self._curl_path:
+            results = web_search_chain(query, max_results, self._curl_path)
         if not results:
             results = self._ddg_html_results(query, max_results)
         if not results:
@@ -367,8 +369,8 @@ class GenericRuntime(BaseRuntime):
         return results[:max_results]
 
     def _ddg_html_results(self, query: str, max_results: int) -> List[dict]:
-        if self._curl_path:
-            return ddg_html_search_with_curl(query, max_results, self._curl_path)
+        if ddg_blocked():
+            return []
         if not self._has_requests:
             return []
         try:

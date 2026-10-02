@@ -208,15 +208,15 @@ def target():
           "runtime/__init__.py — gerçek registry: register(name, cls | 'modül:Sınıf', detect_env) → get_runtime() · detect() · registered_names()", "runtime", size=14)
     d.box("base", 200, 895, 1200, 56, "runtime/base.py — BaseRuntime ABC (agent_call · web_search · web_fetch · run_parallel · phase · log → logging)", "runtime", size=14)
 
-    d.box("native", 70, 995, 400, 120, "hermes (curl, run_bounded)\nclaude_code (köprü: yalnız istek)\naider · cline (generic-only)", "runtime", size=14)
+    d.box("native", 70, 995, 400, 120, "hermes (hermes -z) · claude_code (claude -p)\nköprü işaretleri yalnız istek\naider · cline (generic-only)", "runtime", size=14)
     d.box("cligrp", 990, 995, 560, 120,
-          "runtime/cli.py — CliRuntime tabanı\n+ 10 veri-yalnız alt sınıf (komut adı, env değişkeni)\nshlex · shell YOK · HTTP istemcisi bağımsız", "runtime", size=14)
+          "runtime/cli.py — CliRuntime tabanı + 10 veri-yalnız alt sınıf\nheadless bayrakları · boş temp dizin · shell YOK\n3 hata → CLI atlanır; editör başlatıcıları çalıştırılmaz", "runtime", size=14)
     d.box("gengrp", 510, 995, 440, 120, "generic (taban)\nretry + backoff + jitter\ncurl yalnız requests yoksa · SearXNG", "runtime", size=14)
 
     boundary(d, "bdB", 30, 1260, 1090, 190, "GÜVEN SINIRI B — ağ / güvenilmeyen dış dünya")
     boundary(d, "bdC", 1150, 1260, 440, 190, "GÜVEN SINIRI C — alt süreç (stdin/stdout)")
     d.box("llm", 70, 1320, 300, 100, "LLM API\nDeepSeek / OpenAI-uyumlu\n(anahtar: 0600 header dosyası)", "external", size=14)
-    d.box("search_ext", 410, 1320, 330, 100, "Arama\nSearXNG → DDG HTML → Instant\n→ Google CSE", "external", size=13)
+    d.box("search_ext", 410, 1320, 330, 100, "Arama\nSearXNG · Brave → DDG HTML (throttle+breaker)\n→ Wikipedia", "external", size=13)
     d.box("targets", 780, 1320, 310, 100, "Hedef web siteleri\n(güvenilmeyen içerik: çitli)", "external", size=14)
     d.box("cliproc", 1190, 1320, 360, 100, "Yerel CLI ajanları\ncodex · gemini · cursor-agent …", "external", size=14)
 

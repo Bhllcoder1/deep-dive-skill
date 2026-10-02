@@ -9,6 +9,8 @@ fallback when a native result is unavailable.
 
 import json
 import os
+import shlex
+import shutil
 import sys
 from typing import Any, Callable, List, Mapping, Optional
 
@@ -17,9 +19,10 @@ from core.logs import get_logger
 from core.parallel import run_bounded
 from core.safefetch import fetch_text_with_curl
 from core.urlsafe import is_public_http_url
-from core.websearch import ddg_html_search_with_curl
+from core.websearch import web_search_chain
 
 from .base import BaseRuntime
+from .cli import run_cli_json
 from .generic import GenericRuntime
 
 
@@ -29,8 +32,18 @@ _MAX_SEARCH_RESULTS = 20
 
 _LOG = get_logger("runtime.claude_code")
 
+_CLAUDE_HEADLESS = ("--tools", "", "--no-session-persistence", "--output-format", "text")
+_MAX_CLI_FAILURES = 3
+
+
 class ClaudeCodeRuntime(BaseRuntime):
-    """Runtime adapter for Claude Code, with a DeepSeek fallback."""
+    """Runtime adapter for Claude Code.
+
+    Agent calls use the real response channel ``claude -p`` (headless print mode; verified
+    against the installed CLI) with tools disabled, run in an empty temp directory. The
+    stderr bridge markers are still emitted for the Node wrapper, but they are request-only,
+    so the DeepSeek-compatible API is the fallback when ``claude`` is unavailable or fails.
+    Opt out of the headless call with ``DR_CLAUDE_HEADLESS=0``; ``CLAUDE_CLI`` overrides the command."""
 
     @property
     def name(self) -> str:
@@ -38,20 +51,39 @@ class ClaudeCodeRuntime(BaseRuntime):
 
     def __init__(self):
         self._ready = False
-        self._in_claude = os.environ.get("CLAUDE_CODE") == "1"
+        self._in_claude = (os.environ.get("CLAUDE_CODE") == "1" or os.environ.get("CLAUDECODE") == "1"
+                           or bool(os.environ.get("CLAUDE_CODE_ENTRYPOINT")))
         self._api_key = os.environ.get("DEEPSEEK_API_KEY", "")
+        self._claude_cmd = self._resolve_claude()
+        self._failures = 0
+
+    @staticmethod
+    def _resolve_claude() -> Optional[list]:
+        if os.environ.get("DR_CLAUDE_HEADLESS", "1") == "0":
+            return None
+        raw = os.environ.get("CLAUDE_CLI", "").strip()
+        if raw:
+            try:
+                tokens = shlex.split(raw)
+            except ValueError:
+                tokens = []
+            found = shutil.which(tokens[0]) if tokens else None
+            return [found, *tokens[1:]] if found else None
+        found = shutil.which("claude")
+        return [found, "-p", *_CLAUDE_HEADLESS] if found else None
 
     def setup(self) -> bool:
-        """Check whether either the Claude bridge or fallback is available."""
-        if self._in_claude:
-            _LOG.info("[claude_code] Claude Code runtime detected")
+        """Ready when the headless `claude` CLI or the API fallback is usable."""
+        if self._claude_cmd:
+            _LOG.info(f"[claude_code] headless agent: {' '.join(self._claude_cmd[:2])} …"
+                      + (" (inside Claude Code)" if self._in_claude else ""))
             self._ready = True
             return True
         if self._api_key:
-            _LOG.warning("[claude_code] Claude Code unavailable; using generic fallback")
+            _LOG.warning("[claude_code] `claude` CLI unavailable; using the generic API fallback")
             self._ready = True
             return True
-        _LOG.error("[claude_code] Claude Code unavailable and no API key configured")
+        _LOG.error("[claude_code] neither the `claude` CLI nor DEEPSEEK_API_KEY is available")
         return False
 
     def _emit_marker(self, marker_type: str, data: Mapping[str, Any]) -> None:
@@ -91,8 +123,13 @@ class ClaudeCodeRuntime(BaseRuntime):
                 "phase": phase,
             })
 
-        # The current bridge is request-only.  Do not pretend that a marker
-        # produced a response; callers get a real fallback result or None.
+        # The marker bridge is request-only, so it never produces a result by itself.
+        if self._claude_cmd and self._failures < _MAX_CLI_FAILURES:
+            result = run_cli_json(self._claude_cmd, prompt, schema, prompt_mode="stdin",
+                                  timeout=120, tag="claude_code")
+            self._failures = 0 if result is not None else self._failures + 1
+            if result is not None:
+                return result
         return self._generic_agent_call(prompt, schema, label, phase)
 
     def _generic_agent_call(self, prompt: str, schema: Optional[dict] = None,
@@ -161,7 +198,7 @@ class ClaudeCodeRuntime(BaseRuntime):
         if self._in_claude:
             self._emit_marker("WebSearch", {"query": query, "max_results": max_results})
 
-        return ddg_html_search_with_curl(query, max_results, "curl", user_agent="Mozilla/5.0")
+        return web_search_chain(query, max_results, "curl", user_agent="Mozilla/5.0")
 
     def web_fetch(self, url: str) -> Optional[str]:
         """Fetch a public HTTP(S) URL through the bridge or the shared safe curl fetch."""
