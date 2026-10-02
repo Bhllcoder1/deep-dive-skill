@@ -243,7 +243,7 @@ def main() -> int:
     parser.add_argument("--format", choices=["text", "json"], default="text")
     parser.add_argument("--runtime", choices=sorted(_runtime_names()), default="auto")
     parser.add_argument("--tier", choices=["low", "medium", "high", "ultra"],
-                        help="Cost tier — bounds total agent calls (low~8, medium~26, high~46, ultra~147). Default: high")
+                        help="Cost tier — bounds total agent calls (low~9, medium~26, high~46, ultra~147). Default: high")
     parser.add_argument("--angles", type=int, help="Search angle sayısı (tier'i override eder)")
     parser.add_argument("--refutations", type=int,
                         help="Çürütme için gereken oy sayısı, --votes'u aşamaz (tier'i override eder)")

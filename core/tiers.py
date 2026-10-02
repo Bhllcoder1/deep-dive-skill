@@ -14,7 +14,7 @@ actual "don't spawn 200 agents simultaneously" knob, independent of the total bu
 from typing import Dict
 
 TIER_PRESETS: Dict[str, Dict[str, int]] = {
-    # ~8 agent calls — sanity check / cheap fact lookup, single-vote verification
+    # ~9 agent calls — sanity check / cheap fact lookup, single-vote verification
     "low": {
         "angles": 2, "max_fetch": 3, "max_verify_claims": 2,
         "votes_per_claim": 1, "refutations_required": 1, "max_workers": 2,
