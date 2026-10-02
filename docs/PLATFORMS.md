@@ -42,7 +42,7 @@ Doğrulama dereceleri: **E2E** = gerçek bir araştırma baştan sona çalışt�
 
 **Tüm platformlar — arama (gerçek E2E koşularında ortaya çıktı)**
 - DuckDuckGo HTML ucu bot challenge (HTTP 202 "anomaly") döndürüyor; Brave (429), Mojeek, Startpage, Ecosia, Qwant ve halka açık SearXNG örnekleri de bu ağdan engelli/captcha'lı ölçüldü. **Yalnız Bing HTML'i captcha'sız sonuç verdi.** Bu yüzden DuckDuckGo varsayılan zincirden çıkarıldı (`DR_SEARCH_DDG=1` ile opt-in).
-- Zincir: **SearXNG** (`SearXNG_URL`/`SEARXNG_URL`) → Brave (`BRAVE_API_KEY`) → **Bing HTML** (yönlendirme linkleri çözülür) → Wikipedia → Google CSE → (LLM yedeği, loglu).
+- Zincir: **SearXNG** (`SearXNG_URL`/`SEARXNG_URL`) → Brave (`BRAVE_API_KEY`) → **Bing HTML** (yönlendirme linkleri çözülür) → Wikipedia → Google CSE → (LLM yedeği, loglu). Liste kısa kalırsa anahtarsız dikey API'lerle tamamlanır (`core/searchapis.py`: Stack Overflow, Hacker News, OpenAlex; opsiyonel GitHub, arXiv; `DR_SEARCH_VERTICALS`). Hepsi canlı doğrulandı. Yerel SearXNG kurulumu: `docs/tools/setup_searxng.sh`.
 - **Hermes** için kendi arama backend'i kuruldu: `~/.hermes/config.yaml` → `web.search_backend: searxng`, `~/.hermes/.env` → `SEARXNG_URL=http://127.0.0.1:8888` (yedekler `*.bak.*`). Makinede zaten çalışan `searxng` konteynerinin motorları ayarlandı: DDG/Brave/Startpage kapatıldı (sürekli captcha/limit), bing + google + stackoverflow + github açıldı, `default_lang: all`. Canlı doğrulandı: Hermes'in web aracı ve generic/hermes E2E koşuları doğru kaynağı (Rust Book) buluyor.
 
 **Tüm platformlar — sentez prompt'u (E2E'de ortaya çıktı)**

@@ -222,15 +222,18 @@ def bing_search(query: str, max_results: int, curl_path: str = "curl", *,
 
 def web_search_chain(query: str, max_results: int, curl_path: str = "curl", *,
                      user_agent: str = USER_AGENT, runner: Callable[..., Any] = subprocess.run) -> List[dict]:
-    """Brave (if keyed) → Bing → Wikipedia (→ DuckDuckGo if DR_SEARCH_DDG=1); first non-empty wins."""
+    """Brave (if keyed) → Bing → Wikipedia (→ DuckDuckGo if DR_SEARCH_DDG=1); first non-empty wins,
+    then thin lists are topped up from the keyless vertical APIs (core.searchapis)."""
     backends = [lambda: brave_search(query, max_results, curl_path, runner),
                 lambda: bing_search(query, max_results, curl_path, runner=runner),
                 lambda: wikipedia_search(query, max_results, curl_path, runner)]
     if os.environ.get("DR_SEARCH_DDG") == "1":
         backends.append(lambda: ddg_html_search_with_curl(query, max_results, curl_path,
                                                           user_agent=user_agent, runner=runner))
+    from core.searchapis import top_up  # late import: searchapis builds on this module's helpers
+    results: List[dict] = []
     for backend in backends:
         results = backend()
         if results:
-            return results
-    return []
+            break
+    return top_up(results, query, max_results, curl_path, runner)

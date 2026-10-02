@@ -108,7 +108,7 @@ def current():
     boundary(d, "bdB", 30, 1150, 1090, 190, "GÜVEN SINIRI B — ağ / güvenilmeyen dış dünya")
     boundary(d, "bdC", 1150, 1150, 440, 190, "GÜVEN SINIRI C — alt süreç (stdin/stdout)")
     d.box("llm", 70, 1210, 300, 100, "LLM API\nDeepSeek / OpenAI-uyumlu\n(Bearer anahtarı)", "external", size=14)
-    d.box("search_ext", 410, 1210, 330, 100, "Arama\nDuckDuckGo · Google CSE · SearXNG", "external", size=14)
+    d.box("search_ext", 410, 1210, 330, 100, "Arama\nBing · DuckDuckGo · Google CSE · SearXNG", "external", size=14)
     d.box("targets", 780, 1210, 310, 100, "Hedef web siteleri\n(güvenilmeyen HTML/içerik)", "external", size=14)
     d.box("cliproc", 1190, 1210, 360, 100, "Yerel CLI ajanları\ncodex · gemini · cursor-agent …", "external", size=14)
 
@@ -202,7 +202,7 @@ def target():
 
     d.box("libs", 100, 695, 1400, 84,
           "Ortak yardımcılar (tek kopya): urlsafe.py (sözcüksel + DNS) · safefetch.py (hop kontrolü + --resolve IP sabitleme, 0600 header dosyası) ·\n"
-          "jsonparse.py · websearch.py (tek DDG ayrıştırıcı) · parallel.run_bounded · logs.py (stderr, redaksiyon, JSON, run_id)", "core", size=13)
+          "jsonparse.py · websearch.py + searchapis.py (arama zinciri) · parallel.run_bounded · logs.py (stderr, redaksiyon, JSON, run_id)", "core", size=13)
 
     d.box("registry", 200, 815, 1200, 62,
           "runtime/__init__.py — gerçek registry: register(name, cls | 'modül:Sınıf', detect_env) → get_runtime() · detect() · registered_names()", "runtime", size=14)
@@ -216,7 +216,7 @@ def target():
     boundary(d, "bdB", 30, 1260, 1090, 190, "GÜVEN SINIRI B — ağ / güvenilmeyen dış dünya")
     boundary(d, "bdC", 1150, 1260, 440, 190, "GÜVEN SINIRI C — alt süreç (stdin/stdout)")
     d.box("llm", 70, 1320, 300, 100, "LLM API\nDeepSeek / OpenAI-uyumlu\n(anahtar: 0600 header dosyası)", "external", size=14)
-    d.box("search_ext", 410, 1320, 330, 100, "Arama\nSearXNG · Brave → DDG HTML (throttle+breaker)\n→ Wikipedia", "external", size=13)
+    d.box("search_ext", 410, 1320, 330, 100, "Arama\nSearXNG · Brave → Bing → Wikipedia\n+ SO/HN/OpenAlex top-up (DDG opt-in)", "external", size=13)
     d.box("targets", 780, 1320, 310, 100, "Hedef web siteleri\n(güvenilmeyen içerik: çitli)", "external", size=14)
     d.box("cliproc", 1190, 1320, 360, 100, "Yerel CLI ajanları\ncodex · gemini · cursor-agent …", "external", size=14)
 

@@ -1,8 +1,10 @@
 """Shared building blocks: URL safety, JSON extraction, bounded parallelism, safe fetch."""
 
+import os
 import subprocess
 import time
 import unittest
+from unittest import mock
 
 from core.jsonparse import extract_json_object
 from core.parallel import run_bounded
@@ -253,6 +255,9 @@ class DdgParserTests(unittest.TestCase):
 class SearchChainTests(unittest.TestCase):
     def setUp(self):
         from core import websearch
+        patcher = mock.patch.dict(os.environ, {"DR_SEARCH_VERTICALS": ""})  # chain-order tests: no top-up
+        patcher.start()
+        self.addCleanup(patcher.stop)
         websearch.reset_ddg_state()
         self.addCleanup(websearch.reset_ddg_state)
 
@@ -272,7 +277,7 @@ class SearchChainTests(unittest.TestCase):
         from core import websearch
         wiki = _json.dumps({"query": {"search": [{"title": "Rust (programming language)", "snippet": "a <b>language</b>"}]}})
         runner = self._runner({"duckduckgo": (0, '<x class="anomaly-modal">\n202'), "wikipedia.org": (0, wiki)})
-        with _mock.patch.object(websearch.time, "sleep"), _mock.patch.dict("os.environ", {}, clear=True):
+        with _mock.patch.object(websearch.time, "sleep"), _mock.patch.dict("os.environ", {"DR_SEARCH_VERTICALS": ""}, clear=True):
             results = websearch.web_search_chain("rust", 3, runner=runner)
         self.assertEqual(results[0]["url"], "https://en.wikipedia.org/wiki/Rust_%28programming_language%29")
         self.assertEqual(results[0]["snippet"], "a language")
@@ -288,7 +293,7 @@ class SearchChainTests(unittest.TestCase):
         def runner(cmd, **kwargs):
             seen.append(cmd)
             return type("P", (), {"returncode": 0, "stdout": payload})()
-        with _mock.patch.dict("os.environ", {"BRAVE_API_KEY": "brave-secret-key-123"}, clear=True):
+        with _mock.patch.dict("os.environ", {"BRAVE_API_KEY": "brave-secret-key-123", "DR_SEARCH_VERTICALS": ""}, clear=True):
             results = websearch.web_search_chain("q", 5, runner=runner)
         self.assertEqual([r["url"] for r in results], ["https://a.example/x"])
         self.assertEqual(len(seen), 1)
@@ -297,7 +302,7 @@ class SearchChainTests(unittest.TestCase):
     def test_everything_down_returns_empty(self):
         from unittest import mock as _mock
         from core import websearch
-        with _mock.patch.object(websearch.time, "sleep"), _mock.patch.dict("os.environ", {}, clear=True):
+        with _mock.patch.object(websearch.time, "sleep"), _mock.patch.dict("os.environ", {"DR_SEARCH_VERTICALS": ""}, clear=True):
             self.assertEqual(websearch.web_search_chain("q", 3, runner=self._runner({})), [])
 
 
@@ -309,6 +314,9 @@ class BingAndChainOrderTests(unittest.TestCase):
 
     def setUp(self):
         from core import websearch
+        patcher = mock.patch.dict(os.environ, {"DR_SEARCH_VERTICALS": ""})  # chain-order tests: no top-up
+        patcher.start()
+        self.addCleanup(patcher.stop)
         websearch.reset_ddg_state()
         self.addCleanup(websearch.reset_ddg_state)
 
@@ -328,7 +336,7 @@ class BingAndChainOrderTests(unittest.TestCase):
         def runner(cmd, **kwargs):
             urls.append(cmd[-1])
             return type("P", (), {"returncode": 0, "stdout": BingAndChainOrderTests.PAGE})()
-        with _mock.patch.dict("os.environ", {}, clear=True):
+        with _mock.patch.dict("os.environ", {"DR_SEARCH_VERTICALS": ""}, clear=True):
             results = websearch.web_search_chain("q", 5, runner=runner)
         self.assertEqual(len(results), 2)
         self.assertTrue(all("duckduckgo" not in u for u in urls), urls)
@@ -341,7 +349,7 @@ class BingAndChainOrderTests(unittest.TestCase):
         def runner(cmd, **kwargs):
             urls.append(cmd[-1])
             return type("P", (), {"returncode": 22, "stdout": ""})()
-        with _mock.patch.dict("os.environ", {"DR_SEARCH_DDG": "1"}, clear=True), \
+        with _mock.patch.dict("os.environ", {"DR_SEARCH_DDG": "1", "DR_SEARCH_VERTICALS": ""}, clear=True), \
                 _mock.patch.object(websearch.time, "sleep"):
             websearch.web_search_chain("q", 5, runner=runner)
         self.assertTrue(any("duckduckgo" in u for u in urls))

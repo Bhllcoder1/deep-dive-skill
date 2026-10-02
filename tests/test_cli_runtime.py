@@ -177,11 +177,11 @@ class CliFallbackConfigTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             make_script(tmp, "codex", "exit 3\n")
             with mock.patch.dict(os.environ, {"PATH": tmp, "HOME": tmp}, clear=True), \
-                    mock.patch("runtime.generic.time.sleep") as sleep, \
+                    mock.patch("runtime.generic.time") as clock, \
                     mock.patch.object(GenericRuntime, "_post_once") as post:
                 self.assertIsNone(CodexRuntime().agent_call("p"))
         post.assert_not_called()
-        sleep.assert_not_called()
+        clock.sleep.assert_not_called()  # module-local patch: other threads' time.sleep can't trip it
 
     def test_plain_http_api_base_warns_unless_loopback(self):
         rt = GenericRuntime()
