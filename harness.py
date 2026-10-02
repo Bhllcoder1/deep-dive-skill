@@ -274,6 +274,26 @@ def print_report(result: Dict[str, Any], format: str = "text") -> None:
             text = claim.get("claim", "") if isinstance(claim, Mapping) else claim
             print(f"  ✗ {_text(text, '')[:100]}")
 
+    confirmed = result.get("confirmed", [])
+    if isinstance(confirmed, list) and confirmed:
+        print(f"\n✓ Doğrulanmış (birleştirilmemiş) İddialar ({len(confirmed)})\n{'─' * 40}")
+        for claim in confirmed:
+            if not isinstance(claim, Mapping):
+                print(f"  ✓ {_text(claim, '')[:100]}")
+                continue
+            print(f"  ✓ {_text(claim.get('claim'), '')[:100]}  [{_text(claim.get('vote'), '')}]")
+            if claim.get("source"):
+                print(f"      Kaynak: {_text(claim['source'])[:80]}")
+
+    unverified = result.get("unverified", [])
+    if isinstance(unverified, list) and unverified:
+        print(f"\n? Doğrulanamayan İddialar ({len(unverified)})")
+        for claim in unverified:
+            text = claim.get("claim", "") if isinstance(claim, Mapping) else claim
+            errored = claim.get("erroredVotes") if isinstance(claim, Mapping) else None
+            suffix = f" ({errored} hatalı oy)" if errored else ""
+            print(f"  ? {_text(text, '')[:100]}{suffix}")
+
     caveats = result.get("caveats", "")
     if caveats:
         print(f"\n⚠ Uyarılar\n{'─' * 40}\n{_text(caveats)}")
@@ -305,6 +325,9 @@ def main() -> int:
     parser.add_argument("--runtime", choices=sorted(_RUNTIMES), default="auto")
     parser.add_argument("--tier", choices=["low", "medium", "high", "ultra"],
                         help="Cost tier — bounds total agent calls (low~8, medium~26, high~46, ultra~147). Default: high")
+    parser.add_argument("--angles", type=int, help="Search angle sayısı (tier'i override eder)")
+    parser.add_argument("--refutations", type=int,
+                        help="Çürütme için gereken oy sayısı, --votes'u aşamaz (tier'i override eder)")
     parser.add_argument("--max-fetch", type=int, help="Maksimum fetch URL (tier'i override eder)")
     parser.add_argument("--max-claims", type=int, help="Maksimum verify claim (tier'i override eder)")
     parser.add_argument("--votes", type=int, help="Claim başına verifier oy (tier'i override eder)")
@@ -331,6 +354,8 @@ def main() -> int:
 
     kwargs = {key: value for key, value in {
         "tier": args.tier,
+        "angles": args.angles,
+        "refutations_required": args.refutations,
         "max_fetch": args.max_fetch,
         "max_verify_claims": args.max_claims,
         "votes_per_claim": args.votes,
