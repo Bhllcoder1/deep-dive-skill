@@ -74,7 +74,7 @@ class VotingTests(unittest.TestCase):
         self.assertEqual(result["findings"], [])
 
     def test_tie_is_unverified_not_confirmed(self):
-        result, _ = self._run([verdict(True), verdict(False)], VOTES_PER_CLAIM=2, REFUTATIONS_REQUIRED=2)
+        result, _ = self._run([verdict(True), verdict(False)], votes_per_claim=2, refutations_required=2)
         self.assertEqual([c["claim"] for c in result["unverified"]], ["the claim"])
         self.assertEqual(result["refuted"], [])
         self.assertEqual(result["stats"]["confirmed"], 0)

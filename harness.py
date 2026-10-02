@@ -2,96 +2,32 @@
 """CLI and Python API entrypoint for the Deep Dive research pipeline."""
 
 import contextlib
-import importlib
 import json
 import os
 import sys
 import threading
 from typing import Any, Dict, Mapping, Optional
 
-
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 if _THIS_DIR not in sys.path:
     sys.path.insert(0, _THIS_DIR)
 
+from core.config import OPTION_ENV, Config  # noqa: E402  (needs the path set above)
 
-_CONFIG_MAP = {
-    "tier": "DR_COST_TIER",
-    "angles": "DR_ANGLES",
-    "max_fetch": "DR_MAX_FETCH",
-    "max_verify_claims": "DR_MAX_VERIFY_CLAIMS",
-    "votes_per_claim": "DR_VOTES_PER_CLAIM",
-    "refutations_required": "DR_REFUTATIONS_REQUIRED",
-    "max_workers": "DR_MAX_WORKERS",
-}
+_CONFIG_MAP = OPTION_ENV  # public option -> environment variable (kept for compatibility)
+
+
 def _runtime_names() -> set:
     from runtime import registered_names
     return set(registered_names()) | {"auto"}
 
-
-_CONFIG_LOCK = threading.RLock()
 
 
 def _error_result(question: str, message: str) -> Dict[str, Any]:
     return {"error": message, "question": question}
 
 
-def _coerce_positive_int(name: str, value: Any) -> int:
-    if isinstance(value, bool):
-        raise ValueError(f"{name} must be a positive integer.")
-    try:
-        number = int(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{name} must be a positive integer.") from exc
-    if number < 1:
-        raise ValueError(f"{name} must be a positive integer.")
-    return number
-
-
-def _resolve_config(overrides: Mapping[str, Any]) -> Dict[str, str]:
-    unknown = set(overrides) - set(_CONFIG_MAP)
-    if unknown:
-        raise ValueError(f"Unsupported configuration option(s): {', '.join(sorted(unknown))}.")
-
-    from core.tiers import HARD_MAX_WORKERS, resolve_tier
-
-    raw_tier = overrides.get("tier", os.environ.get("DR_COST_TIER", ""))
-    tier = str(raw_tier or "high").strip().lower()
-    if tier not in {"low", "medium", "high", "ultra"}:
-        raise ValueError("tier must be one of: low, medium, high, ultra.")
-
-    tier_config = resolve_tier(tier)
-    resolved = {"DR_COST_TIER": tier}
-    for option, env_key in _CONFIG_MAP.items():
-        if option == "tier":
-            continue
-        raw_value = overrides.get(option, os.environ.get(env_key, tier_config[option]))
-        resolved[env_key] = str(_coerce_positive_int(option, raw_value))
-
-    votes = int(resolved["DR_VOTES_PER_CLAIM"])
-    refutations = int(resolved["DR_REFUTATIONS_REQUIRED"])
-    if refutations > votes:
-        raise ValueError("refutations_required cannot exceed votes_per_claim.")
-    if int(resolved["DR_MAX_WORKERS"]) > HARD_MAX_WORKERS:
-        raise ValueError(f"max_workers cannot exceed the hard limit of {HARD_MAX_WORKERS}.")
-    return resolved
-
-
-@contextlib.contextmanager
-def _temporary_environ(values: Mapping[str, str]):
-    previous = {key: os.environ.get(key) for key in values}
-    os.environ.update(values)
-    try:
-        yield
-    finally:
-        for key, value in previous.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
-
-
-def _configure_dashboard(question: str, config: Mapping[str, str]) -> Any:
+def _configure_dashboard(question: str, config: Config) -> Any:
     """Adapt the bundled Dashboard to the small interface expected by engine.run."""
     from core.dashboard import Dashboard
 
@@ -100,9 +36,9 @@ def _configure_dashboard(question: str, config: Mapping[str, str]) -> Any:
     dashboard.subtitle = question[:60]
     totals = {
         "Scope": 1,
-        "Search": int(config["DR_ANGLES"]),
-        "Fetch": int(config["DR_MAX_FETCH"]),
-        "Verify": int(config["DR_MAX_VERIFY_CLAIMS"]),
+        "Search": config.angles,
+        "Fetch": config.max_fetch,
+        "Verify": config.max_verify_claims,
         "Synthesize": 1,
     }
     for phase in dashboard.phases:
@@ -124,7 +60,7 @@ def _configure_dashboard(question: str, config: Mapping[str, str]) -> Any:
     return dashboard
 
 
-def _start_dashboard(question: str, config: Mapping[str, str], runtime: Any) -> tuple[Any, Optional[threading.Event], Optional[threading.Thread]]:
+def _start_dashboard(question: str, config: Config, runtime: Any) -> tuple[Any, Optional[threading.Event], Optional[threading.Thread]]:
     if not sys.stdout.isatty():
         return None, None, None
     try:
@@ -161,9 +97,9 @@ def deep_research(question: str, runtime_name: Optional[str] = None,
                   show_dashboard: bool = True, **kwargs) -> Dict[str, Any]:
     """Run the pipeline and return its structured research report.
 
-    Keyword configuration mirrors the documented ``DR_*`` settings. Each call
-    is isolated: overrides apply while its pipeline is running and are restored
-    before this function returns.
+    Keyword configuration mirrors the documented ``DR_*`` settings (see
+    ``core.config.Config``). Each call gets its own immutable ``Config``: nothing global
+    is mutated, so concurrent calls with different settings are safe.
     """
     if not isinstance(question, str):
         return _error_result("", "Research question must be a string.")
@@ -174,55 +110,38 @@ def deep_research(question: str, runtime_name: Optional[str] = None,
         return _error_result(question, f"Unsupported runtime: {runtime_name!r}.")
 
     try:
-        config = _resolve_config(kwargs)
+        config = Config.resolve(kwargs)
     except ValueError as exc:
         return _error_result(question, str(exc))
 
-    engine_module = None
-    with _CONFIG_LOCK:
-        try:
-            with _temporary_environ(config):
-                dashboard = stop_event = thread = None
-                try:
-                    from runtime import get_runtime
+    dashboard = stop_event = thread = None
+    try:
+        from core import engine
+        from runtime import get_runtime
 
-                    # ``core.engine`` reads DR_* settings at import time. Reload it
-                    # under the lock so this invocation receives its own settings.
-                    engine_module = importlib.import_module("core.engine")
-                    engine_module = importlib.reload(engine_module)
-                    selected_runtime = None if runtime_name in (None, "auto") else runtime_name
-                    runtime = get_runtime(selected_runtime)
+        runtime = get_runtime(None if runtime_name in (None, "auto") else runtime_name)
 
-                    print(f"\n{'=' * 50}")
-                    print("🔬 Deep Dive Skill v2")
-                    print(f"   Runtime: {runtime.name}")
-                    print(f"   Question: {question[:100]}")
-                    print(f"{'=' * 50}")
+        print(f"\n{'=' * 50}")
+        print("🔬 Deep Dive Skill v2")
+        print(f"   Runtime: {runtime.name}")
+        print(f"   Question: {question[:100]}")
+        print(f"{'=' * 50}")
 
-                    if show_dashboard:
-                        dashboard, stop_event, thread = _start_dashboard(question, config, runtime)
-                    result = engine_module.run(question, runtime=runtime, dashboard=dashboard)
-                    if not isinstance(result, dict):
-                        result = _error_result(question, "Pipeline returned an invalid result.")
-                    else:
-                        result.setdefault("question", question)
-                    return result
-                finally:
-                    _stop_dashboard(stop_event, thread)
-        except KeyboardInterrupt:
-            raise
-        except TimeoutError as exc:
-            return _error_result(question, f"Research timed out: {exc}")
-        except Exception as exc:
-            return _error_result(question, f"Research failed ({type(exc).__name__}): {exc}")
-        finally:
-            # Restore engine defaults too, not just os.environ, so this call's
-            # configuration cannot affect a later direct engine.run() call.
-            if engine_module is not None:
-                try:
-                    importlib.reload(engine_module)
-                except Exception as exc:
-                    print(f"[deep-research] Could not restore engine configuration: {exc}", file=sys.stderr)
+        if show_dashboard:
+            dashboard, stop_event, thread = _start_dashboard(question, config, runtime)
+        result = engine.run(question, runtime=runtime, dashboard=dashboard, config=config)
+        if not isinstance(result, dict):
+            return _error_result(question, "Pipeline returned an invalid result.")
+        result.setdefault("question", question)
+        return result
+    except KeyboardInterrupt:
+        raise
+    except TimeoutError as exc:
+        return _error_result(question, f"Research timed out: {exc}")
+    except Exception as exc:
+        return _error_result(question, f"Research failed ({type(exc).__name__}): {exc}")
+    finally:
+        _stop_dashboard(stop_event, thread)
 
 
 def _text(value: Any, default: str = "N/A") -> str:
@@ -333,6 +252,8 @@ def main() -> int:
     parser.add_argument("--max-claims", type=int, help="Maksimum verify claim (tier'i override eder)")
     parser.add_argument("--votes", type=int, help="Claim başına verifier oy (tier'i override eder)")
     parser.add_argument("--max-workers", type=int, help="Eşzamanlı verifier agent sınırı, sabit tavan 20 (tier'i override eder)")
+    parser.add_argument("--phase-budget", type=int,
+                        help="Faz başına saniye bütçesi; dolunca yeni iş başlatılmaz (varsayılan 900)")
     parser.add_argument("--output", "-o", type=str, help="Çıktı dosyası")
     parser.add_argument("--no-dashboard", action="store_true", help="Dashboard'u devre dışı bırak")
     args = parser.parse_args()
@@ -361,6 +282,7 @@ def main() -> int:
         "max_verify_claims": args.max_claims,
         "votes_per_claim": args.votes,
         "max_workers": args.max_workers,
+        "phase_budget_s": args.phase_budget,
     }.items() if value is not None}
 
     # JSON mode promises machine-readable stdout; all pipeline progress goes to stderr.

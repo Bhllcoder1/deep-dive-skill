@@ -11,7 +11,7 @@ import unittest
 from unittest import mock
 
 import harness
-from tests.fakes import FakeRuntime, search_result
+from tests.fakes import FakeRuntime
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DR_KEYS = list(harness._CONFIG_MAP.values())

@@ -1,15 +1,15 @@
 """Test doubles: a scripted runtime that needs no network and no API key."""
 
 import re
-from unittest import mock
 
 from core import engine
+from core.config import Config
 from runtime.base import BaseRuntime
 
 # Small, deterministic pipeline settings used by every engine test.
 DEFAULT_CONFIG = {
-    "ANGLES": 2, "VOTES_PER_CLAIM": 3, "REFUTATIONS_REQUIRED": 2,
-    "MAX_FETCH": 4, "MAX_VERIFY_CLAIMS": 5, "MAX_WORKERS": 3,
+    "angles": 2, "votes_per_claim": 3, "refutations_required": 2,
+    "max_fetch": 4, "max_verify_claims": 5, "max_workers": 3,
 }
 
 
@@ -46,6 +46,7 @@ class FakeRuntime(BaseRuntime):
         ]
         self.search_raises = search_raises
         self.agent_calls = []      # (phase, label)
+        self.prompts = []          # (phase, prompt)
         self.search_calls = []     # queries sent to web_search()
         self.fetch_calls = []      # urls sent to web_fetch()
         self.logs = []
@@ -79,6 +80,7 @@ class FakeRuntime(BaseRuntime):
 
     def agent_call(self, prompt, schema=None, label="", phase=""):
         self.agent_calls.append((phase, label))
+        self.prompts.append((phase, prompt))
         if phase == "Scope":
             return {"question": "q", "summary": "s", "angles": self.angles}
         if phase == "Search":
@@ -108,10 +110,8 @@ def search_result(url, title="t", relevance="high"):
 
 def run_engine(rt, question="why is the sky blue?", **overrides):
     """Run engine.run with small deterministic settings."""
-    config = dict(DEFAULT_CONFIG)
-    config.update(overrides)
-    with mock.patch.multiple(engine, **config):
-        return engine.run(question, runtime=rt)
+    config = Config(**{**DEFAULT_CONFIG, **overrides})
+    return engine.run(question, runtime=rt, config=config)
 
 
 def simple_runtime(claims_by_url, **kwargs):
