@@ -41,6 +41,7 @@ from harness import deep_research
 question = sys.argv[1]
 dash = Dashboard()
 dash.subtitle = question[:60]
+dash._last_question = question
 
 def run_pipeline():
     result = deep_research(question, show_dashboard=False)
