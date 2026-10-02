@@ -179,3 +179,38 @@ class RunBoundedTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DdgParserTests(unittest.TestCase):
+    PAGE = '''
+    <div class="result"><a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.example.org%2Fpaper%3Fid%3D1&amp;rut=abc">Example <b>Paper</b></a>
+      <a class="result__snippet" href="x">A short   snippet</a></div>
+    <div class="result"><a class="result__a" href="https://other.example/page">Other</a></div>
+    <div class="result"><a class="result__a" href="https://other.example/page">Duplicate</a></div>
+    <div class="result"><a class="result__a" href="http://127.0.0.1/admin">Local</a></div>
+    <div class="result"><a class="result__a" href="/relative">Relative</a></div>
+    '''
+
+    def test_parse(self):
+        from core.websearch import parse_ddg_html
+        results = parse_ddg_html(self.PAGE, 10)
+        self.assertEqual([r["url"] for r in results],
+                         ["https://www.example.org/paper?id=1", "https://other.example/page"])
+        self.assertEqual(results[0]["title"], "Example Paper")
+        self.assertEqual(results[0]["snippet"], "A short snippet")
+
+    def test_limit_and_garbage(self):
+        from core.websearch import parse_ddg_html, unwrap_ddg_url
+        self.assertEqual(len(parse_ddg_html(self.PAGE, 1)), 1)
+        self.assertEqual(parse_ddg_html("", 5), [])
+        self.assertEqual(parse_ddg_html(None, 5), [])  # type: ignore[arg-type]
+        self.assertEqual(unwrap_ddg_url("https://a.example/x"), "https://a.example/x")
+
+    def test_curl_search_uses_runner_and_handles_failure(self):
+        from core.websearch import ddg_html_search_with_curl
+
+        class Proc:
+            returncode, stdout = 0, DdgParserTests.PAGE
+        self.assertEqual(len(ddg_html_search_with_curl("q", 5, runner=lambda *a, **k: Proc())), 2)
+        Proc.returncode = 22
+        self.assertEqual(ddg_html_search_with_curl("q", 5, runner=lambda *a, **k: Proc()), [])

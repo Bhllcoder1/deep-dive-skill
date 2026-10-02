@@ -1,6 +1,5 @@
 """Portable fallback runtime using requests when available and curl otherwise."""
 
-import html
 import json
 import os
 import re
@@ -16,6 +15,7 @@ from core.logs import get_logger
 from core.parallel import run_bounded
 from core.safefetch import USER_AGENT as _USER_AGENT, fetch_text_with_curl, html_to_text
 from core.urlsafe import is_public_http_url, is_safe_to_connect
+from core.websearch import ddg_html_search_with_curl, parse_ddg_html
 
 from .base import BaseRuntime
 
@@ -244,9 +244,9 @@ class GenericRuntime(BaseRuntime):
 
         results = self._searxng_results(query, max_results)
         if not results:
-            results = self._ddg_instant_results(query, max_results)
-        if not results:
             results = self._ddg_html_results(query, max_results)
+        if not results:
+            results = self._ddg_instant_results(query, max_results)
         if not results:
             results = self._google_results(query, max_results)
         return results[:max_results]
@@ -320,28 +320,19 @@ class GenericRuntime(BaseRuntime):
         return results[:max_results]
 
     def _ddg_html_results(self, query: str, max_results: int) -> List[dict]:
-        if not self._curl_path:
+        if self._curl_path:
+            return ddg_html_search_with_curl(query, max_results, self._curl_path)
+        if not self._has_requests:
             return []
-        url = "https://html.duckduckgo.com/html/?" + urllib.parse.urlencode({"q": query})
         try:
-            result = subprocess.run(
-                [self._curl_path, "--silent", "--show-error", "--fail", "--location", "--connect-timeout", str(_CONNECT_TIMEOUT), "--max-time", "15", url, "-A", _USER_AGENT],
-                capture_output=True, text=True, errors="replace", timeout=20,
-            )
-        except (OSError, subprocess.TimeoutExpired):
+            import requests
+            response = requests.get("https://html.duckduckgo.com/html/", params={"q": query},
+                                    headers={"User-Agent": _USER_AGENT}, timeout=(_CONNECT_TIMEOUT, 15))
+            page = response.text if response.ok else ""
+            response.close()
+        except requests.RequestException:
             return []
-        if result.returncode != 0:
-            return []
-
-        results: List[dict] = []
-        pattern = r'<a[^>]+class=["\'][^"\']*\bresult__a\b[^"\']*["\'][^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>'
-        for match in re.finditer(pattern, result.stdout, re.IGNORECASE | re.DOTALL):
-            url = self._ddg_result_url(html.unescape(match.group(1)))
-            title = html.unescape(re.sub(r"<[^>]+>", " ", match.group(2))).strip()
-            self._append_search_result(results, url, title, "", "medium")
-            if len(results) >= max_results:
-                break
-        return results
+        return parse_ddg_html(page, max_results)
 
     def _google_results(self, query: str, max_results: int) -> List[dict]:
         api_key = os.environ.get("GOOGLE_API_KEY", "").strip()
@@ -370,13 +361,6 @@ class GenericRuntime(BaseRuntime):
             if isinstance(item, dict):
                 self._append_search_result(results, item.get("link"), item.get("title"), item.get("snippet"), "medium")
         return results[:max_results]
-
-    @staticmethod
-    def _ddg_result_url(url: str) -> str:
-        parsed = urllib.parse.urlsplit(url)
-        if parsed.netloc.lower().endswith("duckduckgo.com") and parsed.path.startswith("/l/"):
-            return urllib.parse.parse_qs(parsed.query).get("uddg", [url])[0]
-        return url
 
     def _append_search_result(self, results: List[dict], url: Any, title: Any, snippet: Any, relevance: str) -> None:
         if not is_public_http_url(url) or any(item["url"] == url for item in results):

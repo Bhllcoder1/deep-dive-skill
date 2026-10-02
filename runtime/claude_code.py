@@ -9,10 +9,7 @@ fallback when a native result is unavailable.
 
 import json
 import os
-import re
-import subprocess
 import sys
-import urllib.parse
 from typing import Any, Callable, List, Mapping, Optional
 
 from core.jsonparse import extract_json_object
@@ -20,6 +17,7 @@ from core.logs import get_logger
 from core.parallel import run_bounded
 from core.safefetch import fetch_text_with_curl
 from core.urlsafe import is_public_http_url
+from core.websearch import ddg_html_search_with_curl
 
 from .base import BaseRuntime
 
@@ -159,29 +157,7 @@ class ClaudeCodeRuntime(BaseRuntime):
         if self._in_claude:
             self._emit_marker("WebSearch", {"query": query, "max_results": max_results})
 
-        try:
-            response = subprocess.run(
-                ["curl", "-sL", "--max-time", "15", "https://html.duckduckgo.com/html/?q=" + urllib.parse.quote(query),
-                 "-H", "User-Agent: Mozilla/5.0"],
-                capture_output=True,
-                text=True,
-                timeout=20,
-            )
-            if response.returncode != 0:
-                self.log(f"web search fallback failed with exit code {response.returncode}")
-                return []
-            results = []
-            for match in re.finditer(r'<a[^>]+class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', response.stdout, re.DOTALL):
-                url = match.group(1).strip()
-                title = re.sub(r"<[^>]+>", "", match.group(2)).strip()
-                if url and title:
-                    results.append({"url": url, "title": title, "snippet": "", "relevance": "medium"})
-                if len(results) >= max_results:
-                    break
-            return results
-        except (OSError, subprocess.SubprocessError) as exc:
-            self.log(f"web search fallback error: {exc}")
-            return []
+        return ddg_html_search_with_curl(query, max_results, "curl", user_agent="Mozilla/5.0")
 
     def web_fetch(self, url: str) -> Optional[str]:
         """Fetch a public HTTP(S) URL through the bridge or the shared safe curl fetch."""

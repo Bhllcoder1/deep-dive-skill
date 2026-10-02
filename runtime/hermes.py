@@ -10,7 +10,6 @@ Kullanım:
     result = rt.agent_call("prompt", schema)
 """
 
-import html
 import json
 import os
 import re
@@ -19,13 +18,14 @@ import subprocess
 import tempfile
 import time
 from typing import Any, Callable, List, Optional
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import urlsplit
 
 from core.jsonparse import extract_json_object
 from core.logs import get_logger
 from core.parallel import run_bounded
 from core.safefetch import fetch_text_with_curl
 from core.urlsafe import is_public_http_url
+from core.websearch import ddg_html_search_with_curl
 
 from .base import BaseRuntime
 
@@ -252,15 +252,6 @@ class HermesRuntime(BaseRuntime):
             return None
         return max_results
 
-    def _ddg_result_url(self, url: str) -> Optional[str]:
-        url = html.unescape(url).strip()
-        if url.startswith("//"):
-            url = f"https:{url}"
-        parsed = urlsplit(url)
-        if parsed.hostname and parsed.hostname.lower().endswith("duckduckgo.com") and parsed.path.startswith("/l/"):
-            url = parse_qs(parsed.query).get("uddg", [""])[0]
-        return url if is_public_http_url(url) else None
-
     def web_search(self, query: str, max_results: int = 6) -> List[dict]:
         """DuckDuckGo HTML ile senkron web araması yapar."""
         limit = self._valid_result_limit(max_results)
@@ -269,39 +260,10 @@ class HermesRuntime(BaseRuntime):
             return []
         self.log(f"web_search: {query[:60]}...")
 
-        try:
-            result = subprocess.run(
-                [
-                    "curl", "-sS", "-L", "--connect-timeout", "5", "--max-time", "15",
-                    "https://html.duckduckgo.com/html/", "--get", "--data-urlencode", f"q={query}",
-                    "-H", f"User-Agent: {self.USER_AGENT}",
-                ],
-                capture_output=True,
-                text=True,
-                errors="replace",
-                timeout=20,
-            )
-            if result.returncode != 0:
-                self.log(f"DDG search hatası: {self._short_error(result.stderr)}")
-                return []
-
-            results = []
-            seen_urls = set()
-            for match in re.finditer(r'<a[^>]+class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', result.stdout, re.DOTALL):
-                url = self._ddg_result_url(match.group(1))
-                title = html.unescape(re.sub(r"<[^>]+>", "", match.group(2))).strip()
-                if not url or not title or url in seen_urls:
-                    continue
-                seen_urls.add(url)
-                results.append({"url": url, "title": title, "snippet": "", "relevance": "medium"})
-                if len(results) >= limit:
-                    break
-            return results
-        except subprocess.TimeoutExpired:
-            self.log("DDG search zaman aşımına uğradı")
-        except OSError as error:
-            self.log(f"DDG search hatası: {self._short_error(str(error))}")
-        return []
+        results = ddg_html_search_with_curl(query, limit, "curl", user_agent=self.USER_AGENT)
+        if not results:
+            self.log("DDG search sonuç vermedi veya başarısız oldu")
+        return results
 
     def web_fetch(self, url: str) -> Optional[str]:
         """Public HTTP(S) URL'yi (yönlendirmeler ve DNS dahil kontrollü) metne çevirir."""
