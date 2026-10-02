@@ -36,6 +36,12 @@ class SearxngTests(unittest.TestCase):
         self.assertEqual([r["url"] for r in results], ["https://a.example/x"])
         self.assertIn("http://localhost:8080/search?", run.call_args[0][0][-1])
 
+    def test_hermes_style_searxng_url_name_is_accepted(self):
+        payload = {"results": [{"url": "https://a.example/x", "title": "A", "content": "c"}]}
+        with mock.patch.dict(os.environ, {"SEARXNG_URL": "http://127.0.0.1:8888"}, clear=True), \
+                mock.patch("runtime.generic.subprocess.run", return_value=_Done(payload)):
+            self.assertEqual(len(self._runtime()._searxng_results("q", 5)), 1)
+
     def test_invalid_searxng_url_is_ignored(self):
         with mock.patch.dict(os.environ, {"SearXNG_URL": "javascript:alert(1)"}):
             self.assertEqual(self._runtime()._searxng_results("q", 5), [])

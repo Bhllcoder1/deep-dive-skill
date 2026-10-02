@@ -299,3 +299,50 @@ class SearchChainTests(unittest.TestCase):
         from core import websearch
         with _mock.patch.object(websearch.time, "sleep"), _mock.patch.dict("os.environ", {}, clear=True):
             self.assertEqual(websearch.web_search_chain("q", 3, runner=self._runner({})), [])
+
+
+class BingAndChainOrderTests(unittest.TestCase):
+    PAGE = ('<ol><li class="b_algo"><h2><a href="https://www.bing.com/ck/a?!&amp;&amp;p=x&amp;u=a1aHR0cHM6Ly9kb2MucnVzdC1sYW5nLm9yZy9ib29rL2NoMDQtMDAtdW5kZXJzdGFuZGluZy1vd25lcnNoaXAuaHRtbA&amp;ntb=1">Understanding <b>Ownership</b></a></h2>'
+            '<div class="b_caption"><p>Ownership is Rust\'s most unique feature</p></div></li>'
+            '<li class="b_algo"><h2><a href="https://example.org/direct">Direct</a></h2></li>'
+            '<li class="b_algo"><h2><a href="http://127.0.0.1/x">Local</a></h2></li></ol>')
+
+    def setUp(self):
+        from core import websearch
+        websearch.reset_ddg_state()
+        self.addCleanup(websearch.reset_ddg_state)
+
+    def test_bing_redirect_links_are_decoded_and_unsafe_dropped(self):
+        from core.websearch import parse_bing_html
+        results = parse_bing_html(self.PAGE, 10)
+        self.assertEqual([r["url"] for r in results],
+                         ["https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html", "https://example.org/direct"])
+        self.assertEqual(results[0]["title"], "Understanding Ownership")
+        self.assertIn("unique feature", results[0]["snippet"])
+
+    def test_chain_uses_bing_and_never_touches_duckduckgo_by_default(self):
+        from unittest import mock as _mock
+        from core import websearch
+        urls = []
+
+        def runner(cmd, **kwargs):
+            urls.append(cmd[-1])
+            return type("P", (), {"returncode": 0, "stdout": BingAndChainOrderTests.PAGE})()
+        with _mock.patch.dict("os.environ", {}, clear=True):
+            results = websearch.web_search_chain("q", 5, runner=runner)
+        self.assertEqual(len(results), 2)
+        self.assertTrue(all("duckduckgo" not in u for u in urls), urls)
+
+    def test_duckduckgo_is_opt_in_last_resort(self):
+        from unittest import mock as _mock
+        from core import websearch
+        urls = []
+
+        def runner(cmd, **kwargs):
+            urls.append(cmd[-1])
+            return type("P", (), {"returncode": 22, "stdout": ""})()
+        with _mock.patch.dict("os.environ", {"DR_SEARCH_DDG": "1"}, clear=True), \
+                _mock.patch.object(websearch.time, "sleep"):
+            websearch.web_search_chain("q", 5, runner=runner)
+        self.assertTrue(any("duckduckgo" in u for u in urls))
+        self.assertIn("duckduckgo", urls[-1])

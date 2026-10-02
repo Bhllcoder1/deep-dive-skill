@@ -1,14 +1,17 @@
 """Shared web search: one backend chain used by every runtime.
 
-Order: Brave Search API (only if BRAVE_API_KEY is set) → DuckDuckGo HTML → Wikipedia.
+Order: Brave Search API (only if BRAVE_API_KEY is set) → Bing HTML → Wikipedia
+(→ DuckDuckGo HTML only when DR_SEARCH_DDG=1). A self-hosted SearXNG (SearXNG_URL) is
+queried by the runtimes before this chain and is the most dependable option.
 
-DuckDuckGo's HTML endpoint answers bursts with an anti-bot challenge (HTTP 202 and an
-"anomaly" page). Requests are therefore spaced out, and once a challenge is seen the
-endpoint is skipped for a while so the chain moves on immediately (circuit breaker).
-Wikipedia's official API needs no key and is the last resort: sparse, but real sources
-instead of model-invented URLs.
+DuckDuckGo is off by default: its HTML endpoint answers bursts with an anti-bot challenge
+(HTTP 202 "anomaly"), which in practice blocks it. When enabled, requests are spaced out and
+a challenge disables it for a while (circuit breaker). Bing's HTML results page is scraped
+without a key (redirect links are decoded); Wikipedia's official API is the last resort:
+sparse, but real sources instead of model-invented URLs.
 """
 
+import base64
 import html
 import json
 import os
@@ -165,13 +168,68 @@ def wikipedia_search(query: str, max_results: int, curl_path: str = "curl",
     return results[:max_results]
 
 
+_BING_BLOCK = re.compile(r'<li class="b_algo"[^>]*>(.*?)</li>', re.IGNORECASE | re.DOTALL)
+_BING_LINK = re.compile(r'<h2[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>(.*?)</a>', re.IGNORECASE | re.DOTALL)
+_BING_SNIPPET = re.compile(r'<p[^>]*>(.*?)</p>', re.IGNORECASE | re.DOTALL)
+
+
+def unwrap_bing_url(url: str) -> str:
+    """Bing wraps hits as bing.com/ck/a?...&u=a1<base64url of the real URL>."""
+    url = html.unescape(url).strip()
+    parsed = urllib.parse.urlsplit(url)
+    if (parsed.hostname or "").endswith("bing.com") and parsed.path.startswith("/ck/"):
+        token = urllib.parse.parse_qs(parsed.query).get("u", [""])[0]
+        if token.startswith("a1"):
+            raw = token[2:]
+            try:
+                return base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4)).decode("utf-8", "replace")
+            except ValueError:
+                return ""
+        return ""
+    return url
+
+
+def parse_bing_html(page: str, max_results: int) -> List[dict]:
+    results: List[dict] = []
+    seen = set()
+    for block in _BING_BLOCK.finditer(page or ""):
+        link = _BING_LINK.search(block.group(1))
+        if not link:
+            continue
+        found = _result(unwrap_bing_url(link.group(1)), _clean(link.group(2)),
+                        (_BING_SNIPPET.search(block.group(1)) or [None, ""])[1])
+        if found and found["url"] not in seen:
+            seen.add(found["url"])
+            results.append(found)
+            if len(results) >= max_results:
+                break
+    return results
+
+
+def bing_search(query: str, max_results: int, curl_path: str = "curl", *,
+                runner: Callable[..., Any] = subprocess.run) -> List[dict]:
+    url = "https://www.bing.com/search?" + urllib.parse.urlencode({"q": query, "setlang": "en"})
+    try:
+        proc = runner([curl_path, "--silent", "--location", "--max-redirs", "3", "--proto", "=http,https",
+                       "--connect-timeout", "5", "--max-time", "15", "-A",
+                       "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
+                       "-H", "Accept-Language: en", "--", url],
+                      capture_output=True, text=True, errors="replace", timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return parse_bing_html(proc.stdout, max_results) if proc.returncode == 0 else []
+
+
 def web_search_chain(query: str, max_results: int, curl_path: str = "curl", *,
                      user_agent: str = USER_AGENT, runner: Callable[..., Any] = subprocess.run) -> List[dict]:
-    """Brave (if keyed) → DuckDuckGo HTML → Wikipedia; first non-empty answer wins."""
-    for backend in (lambda: brave_search(query, max_results, curl_path, runner),
-                    lambda: ddg_html_search_with_curl(query, max_results, curl_path,
-                                                      user_agent=user_agent, runner=runner),
-                    lambda: wikipedia_search(query, max_results, curl_path, runner)):
+    """Brave (if keyed) → Bing → Wikipedia (→ DuckDuckGo if DR_SEARCH_DDG=1); first non-empty wins."""
+    backends = [lambda: brave_search(query, max_results, curl_path, runner),
+                lambda: bing_search(query, max_results, curl_path, runner=runner),
+                lambda: wikipedia_search(query, max_results, curl_path, runner)]
+    if os.environ.get("DR_SEARCH_DDG") == "1":
+        backends.append(lambda: ddg_html_search_with_curl(query, max_results, curl_path,
+                                                          user_agent=user_agent, runner=runner))
+    for backend in backends:
         results = backend()
         if results:
             return results

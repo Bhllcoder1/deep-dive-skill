@@ -16,7 +16,7 @@ from core.logs import get_logger
 from core.parallel import run_bounded
 from core.safefetch import USER_AGENT as _USER_AGENT, fetch_text_with_curl, html_to_text, secret_header_file
 from core.urlsafe import is_public_http_url, is_safe_to_connect
-from core.websearch import ddg_blocked, parse_ddg_html, web_search_chain
+from core.websearch import parse_bing_html, web_search_chain
 
 from .base import BaseRuntime
 
@@ -281,7 +281,7 @@ class GenericRuntime(BaseRuntime):
         return extract_json_object(message.get("content"), schema)
 
     def web_search(self, query: str, max_results: int = 6) -> List[dict]:
-        """Search SearXNG (if configured), then DuckDuckGo, then Google Custom Search (if configured)."""
+        """SearXNG (if configured) → Brave (if keyed) → Bing → Wikipedia → Google CSE (if configured). DuckDuckGo is opt-in."""
         if not isinstance(query, str) or not query.strip() or not isinstance(max_results, int) or isinstance(max_results, bool):
             return []
         max_results = min(max_results, 50)
@@ -292,10 +292,8 @@ class GenericRuntime(BaseRuntime):
         results = self._searxng_results(query, max_results)
         if not results and self._curl_path:
             results = web_search_chain(query, max_results, self._curl_path)
-        if not results:
-            results = self._ddg_html_results(query, max_results)
-        if not results:
-            results = self._ddg_instant_results(query, max_results)
+        if not results and self._has_requests:
+            results = self._bing_requests_results(query, max_results)  # no curl installed
         if not results:
             results = self._google_results(query, max_results)
         return results[:max_results]
@@ -305,7 +303,7 @@ class GenericRuntime(BaseRuntime):
 
         The instance address is operator-configured, so it is not subject to the
         public-URL rule that applies to fetched pages; its *results* still are."""
-        base = os.environ.get("SearXNG_URL", "").strip().rstrip("/")
+        base = (os.environ.get("SearXNG_URL") or os.environ.get("SEARXNG_URL") or "").strip().rstrip("/")
         parsed = urllib.parse.urlsplit(base)
         if not base or parsed.scheme not in {"http", "https"} or not parsed.netloc:
             return []
@@ -333,55 +331,17 @@ class GenericRuntime(BaseRuntime):
                 self._append_search_result(results, item.get("url"), item.get("title"), item.get("content"), "medium")
         return results[:max_results]
 
-    def _ddg_instant_results(self, query: str, max_results: int) -> List[dict]:
-        if not self._has_requests:
-            return []
+    def _bing_requests_results(self, query: str, max_results: int) -> List[dict]:
         try:
             import requests
-            response = requests.get(
-                "https://api.duckduckgo.com/", params={"q": query, "format": "json"},
-                headers={"User-Agent": _USER_AGENT}, timeout=(_CONNECT_TIMEOUT, 15),
-            )
-            if not response.ok:
-                return []
-            data = response.json()
-        except (requests.RequestException, ValueError, TypeError):
-            return []
-        finally:
-            if "response" in locals():
-                response.close()
-        if not isinstance(data, dict):
-            return []
-
-        results: List[dict] = []
-        self._append_search_result(results, data.get("AbstractURL"), data.get("Heading", query), data.get("Abstract"), "high")
-
-        def add_topics(topics: Any) -> None:
-            if not isinstance(topics, list):
-                return
-            for topic in topics:
-                if not isinstance(topic, dict):
-                    continue
-                self._append_search_result(results, topic.get("FirstURL"), topic.get("Text"), topic.get("Text"), "medium")
-                add_topics(topic.get("Topics"))
-
-        add_topics(data.get("RelatedTopics"))
-        return results[:max_results]
-
-    def _ddg_html_results(self, query: str, max_results: int) -> List[dict]:
-        if ddg_blocked():
-            return []
-        if not self._has_requests:
-            return []
-        try:
-            import requests
-            response = requests.get("https://html.duckduckgo.com/html/", params={"q": query},
-                                    headers={"User-Agent": _USER_AGENT}, timeout=(_CONNECT_TIMEOUT, 15))
+            response = requests.get("https://www.bing.com/search", params={"q": query, "setlang": "en"},
+                                    headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
+                                             "Accept-Language": "en"}, timeout=(_CONNECT_TIMEOUT, 15))
             page = response.text if response.ok else ""
             response.close()
         except requests.RequestException:
             return []
-        return parse_ddg_html(page, max_results)
+        return parse_bing_html(page, max_results)
 
     def _google_results(self, query: str, max_results: int) -> List[dict]:
         api_key = os.environ.get("GOOGLE_API_KEY", "").strip()

@@ -40,8 +40,10 @@ Doğrulama dereceleri: **E2E** = gerçek bir araştırma baştan sona çalışt�
 **Hermes**
 - Runtime yalnızca `DEEPSEEK_API_KEY` bulursa çalışıyordu ve anahtarı `~/.hermes/.env` içinde aramıyordu (bu makinede anahtar orada). Artık `hermes -z` (CANLI doğrulandı) birincil kanal, API yedek; `~/.hermes/.env` de okunuyor. Kapatmak: `DR_HERMES_CLI=0`.
 
-**Tüm platformlar — arama (gerçek bir E2E koşusunda ortaya çıktı)**
-- DuckDuckGo HTML ucu art arda/eşzamanlı isteğe **bot challenge** (HTTP 202 + "anomaly") döndürüyor; bu, `web_search`'ü boşaltıp LLM'in URL uydurmasına yol açıyordu. Eklenenler: istek aralığı (1,5 sn), challenge algılanınca 300 sn atlama (circuit breaker), anahtarsız **Wikipedia API** yedeği ve isteğe bağlı **Brave Search API** (`BRAVE_API_KEY`, SearXNG ve Brave en güvenilir seçenekler). Sıra: SearXNG → Brave → DDG HTML → Wikipedia → (LLM yedeği, loglu). Wikipedia yedeği dar kapsamlıdır; Türkçe sorgular için `DR_WIKI_LANG=tr`.
+**Tüm platformlar — arama (gerçek E2E koşularında ortaya çıktı)**
+- DuckDuckGo HTML ucu bot challenge (HTTP 202 "anomaly") döndürüyor; Brave (429), Mojeek, Startpage, Ecosia, Qwant ve halka açık SearXNG örnekleri de bu ağdan engelli/captcha'lı ölçüldü. **Yalnız Bing HTML'i captcha'sız sonuç verdi.** Bu yüzden DuckDuckGo varsayılan zincirden çıkarıldı (`DR_SEARCH_DDG=1` ile opt-in).
+- Zincir: **SearXNG** (`SearXNG_URL`/`SEARXNG_URL`) → Brave (`BRAVE_API_KEY`) → **Bing HTML** (yönlendirme linkleri çözülür) → Wikipedia → Google CSE → (LLM yedeği, loglu).
+- **Hermes** için kendi arama backend'i kuruldu: `~/.hermes/config.yaml` → `web.search_backend: searxng`, `~/.hermes/.env` → `SEARXNG_URL=http://127.0.0.1:8888` (yedekler `*.bak.*`). Makinede zaten çalışan `searxng` konteynerinin motorları ayarlandı: DDG/Brave/Startpage kapatıldı (sürekli captcha/limit), bing + google + stackoverflow + github açıldı, `default_lang: all`. Canlı doğrulandı: Hermes'in web aracı ve generic/hermes E2E koşuları doğru kaynağı (Rust Book) buluyor.
 
 **Tüm platformlar — sentez prompt'u (E2E'de ortaya çıktı)**
 - Sentez prompt'u çıktı şeklini tarif etmiyordu ("Valid JSON only"); gerçek ajanlar (Hermes) kendi şemasını uydurup sonucu reddettirdi → her seferinde salvage. Düzeltildi; tüm prompt'ların şemadaki zorunlu anahtarları içerdiği testle kilitlendi.

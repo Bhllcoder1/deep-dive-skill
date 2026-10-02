@@ -149,11 +149,11 @@ Any individual `DR_*` setting below overrides its tier value, so you can start f
 | `DR_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR`. Logs go to stderr; secrets are redacted. |
 | `DR_LOG_FORMAT` | `text` | `json` emits one JSON object per line with `ts`, `level`, `logger`, `run_id`, `msg`. |
 | `GOOGLE_API_KEY` + `GOOGLE_CX` | — | Enable Google Custom Search when DuckDuckGo returns no results. Both are required. |
-| `BRAVE_API_KEY` | — | Optional: Brave Search API, tried before DuckDuckGo (key goes in a 0600 header file, never argv). |
+| `BRAVE_API_KEY` | — | Optional: Brave Search API, tried before Bing (key goes in a 0600 header file, never argv). |
 | `DR_WIKI_LANG` | `en` | Wikipedia language for the keyless last-resort search backend. |
 | `DR_CLAUDE_HEADLESS` / `CLAUDE_CLI` | `1` / — | `0` disables the `claude -p` agent channel; `CLAUDE_CLI` overrides its command. |
 | `DR_HERMES_CLI` | `1` | `0` disables the `hermes -z` agent channel. |
-| `SearXNG_URL` | — | HTTP(S) URL for a self-hosted SearXNG instance, queried first by the generic runtime; DuckDuckGo is used if it is unavailable or empty. DuckDuckGo's HTML endpoint rate-limits bursts with a bot challenge; requests are spaced out, a challenge disables it for 5 minutes, and the chain continues with Wikipedia. For dependable search set `SearXNG_URL` or `BRAVE_API_KEY`. |
+| `SearXNG_URL` (or `SEARXNG_URL`) | — | HTTP(S) URL of a self-hosted SearXNG instance, queried first by the generic runtime (most dependable option; enable engines that work from your IP, e.g. bing, google, stackoverflow, github). Search chain otherwise: Brave (if `BRAVE_API_KEY`) → Bing HTML → Wikipedia → Google CSE (if configured). **DuckDuckGo is off by default** (its HTML endpoint bot-challenges bursts); `DR_SEARCH_DDG=1` adds it as a last resort. |
 | `LLM_PROVIDER` | `deepseek` | Dashboard/monitor provider selection. |
 | `LLM_API_KEY` | — | Explicit dashboard/monitor API key. |
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `KIMI_API_KEY`, `QWEN_API_KEY`, `GEMINI_API_KEY`, `MINIMAX_API_KEY`, `ZHIPU_API_KEY` | — | Provider-specific keys recognized by the dashboard/monitor when `LLM_PROVIDER` selects the corresponding provider. The generic pipeline runtime itself uses `DEEPSEEK_API_KEY`. |
@@ -220,7 +220,7 @@ core/
   jsonparse.py                      ← The single JSON-object extractor
   urlsafe.py                        ← The single URL-safety gate (lexical + DNS checks)
   safefetch.py                      ← Redirect-checked, IP-pinned curl fetch; HTML→text; secret header files
-  websearch.py                      ← The single search chain: Brave (keyed) → DuckDuckGo HTML (throttled, breaker) → Wikipedia
+  websearch.py                      ← The single search chain: Brave (keyed) → Bing HTML → Wikipedia (DuckDuckGo opt-in: throttled, breaker)
   parallel.py                       ← run_bounded(): the one bounded-parallel primitive
   logs.py                           ← logging setup (stderr, secret redaction, JSON option, run id)
   dashboard.py                      ← Terminal dashboard, controller, and run history
