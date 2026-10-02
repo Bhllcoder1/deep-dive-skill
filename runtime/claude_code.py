@@ -16,6 +16,7 @@ import urllib.parse
 from typing import Any, Callable, List, Mapping, Optional
 
 from core.jsonparse import extract_json_object
+from core.logs import get_logger
 from core.parallel import run_bounded
 from core.safefetch import fetch_text_with_curl
 from core.urlsafe import is_public_http_url
@@ -26,6 +27,8 @@ from .base import BaseRuntime
 _MARKER_TYPES = {"AGENT", "WebSearch", "WebFetch", "PARALLEL"}
 _MAX_SEARCH_RESULTS = 20
 
+
+_LOG = get_logger("runtime.claude_code")
 
 class ClaudeCodeRuntime(BaseRuntime):
     """Runtime adapter for Claude Code, with a DeepSeek fallback."""
@@ -42,14 +45,14 @@ class ClaudeCodeRuntime(BaseRuntime):
     def setup(self) -> bool:
         """Check whether either the Claude bridge or fallback is available."""
         if self._in_claude:
-            print("[claude_code] Claude Code runtime detected", file=sys.stderr)
+            _LOG.info("[claude_code] Claude Code runtime detected")
             self._ready = True
             return True
         if self._api_key:
-            print("[claude_code] Claude Code unavailable; using generic fallback", file=sys.stderr)
+            _LOG.warning("[claude_code] Claude Code unavailable; using generic fallback")
             self._ready = True
             return True
-        print("[claude_code] Claude Code unavailable and no API key configured", file=sys.stderr)
+        _LOG.error("[claude_code] Claude Code unavailable and no API key configured")
         return False
 
     def _emit_marker(self, marker_type: str, data: Mapping[str, Any]) -> None:
@@ -213,14 +216,3 @@ class ClaudeCodeRuntime(BaseRuntime):
             fn_list, max_workers,
             on_error=lambda index, exc: self.log(f"parallel worker {index} error: {exc}"),
         )
-
-    def phase(self, name: str, detail: str = "") -> None:
-        """Report progress without corrupting JSON emitted on stdout."""
-        if self._in_claude:
-            print(f"  ◇ Phase {name}: {detail}" if detail else f"  ◇ Phase {name}", file=sys.stderr)
-        else:
-            line = "─" * 50
-            print(f"\n{line}\n PHASE: {name}\n{line}", file=sys.stderr)
-
-    def log(self, message: str) -> None:
-        print(f"  • {message}", file=sys.stderr)

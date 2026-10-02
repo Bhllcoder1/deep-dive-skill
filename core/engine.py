@@ -10,6 +10,7 @@ module-level state, so concurrent runs with different settings are safe.
 from typing import Any, Optional
 
 from core.config import Config
+from core.logs import ensure_configured
 from core.context import RunContext
 from core.phases import fetch, scope, search, synthesize, verify
 from core.state import RunState
@@ -32,7 +33,12 @@ def run(question: str, runtime: Optional[BaseRuntime] = None, dashboard: Optiona
     except Exception:
         return {"error": "Could not initialize the research runtime.", "question": question}
 
+    ensure_configured()
     ctx = RunContext(rt, config or Config.from_env(), question)
+    try:
+        rt.run_id = ctx.run_id  # lets runtime log lines carry the trace id
+    except Exception:
+        pass
     state = RunState(question)
     for phase in PHASES:
         if dashboard:

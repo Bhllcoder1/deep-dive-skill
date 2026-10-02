@@ -22,12 +22,15 @@ from typing import Any, Callable, List, Optional
 from urllib.parse import parse_qs, urlsplit
 
 from core.jsonparse import extract_json_object
+from core.logs import get_logger
 from core.parallel import run_bounded
 from core.safefetch import fetch_text_with_curl
 from core.urlsafe import is_public_http_url
 
 from .base import BaseRuntime
 
+
+_LOG = get_logger("runtime.hermes")
 
 class HermesRuntime(BaseRuntime):
     """Hermes Agent için runtime adaptörü."""
@@ -50,15 +53,15 @@ class HermesRuntime(BaseRuntime):
         self._ready = False
         self._api_key = self._find_api_key()
         if not self._api_key:
-            print("[hermes] ❌ DEEPSEEK_API_KEY bulunamadı. ~/.env veya environment değişkenine ekleyin.")
+            _LOG.error("[hermes] ❌ DEEPSEEK_API_KEY bulunamadı. ~/.env veya environment değişkenine ekleyin.")
             return False
 
         if not shutil.which("curl"):
-            print("[hermes] ❌ curl bulunamadı. Hermes runtime curl gerektirir.")
+            _LOG.error("[hermes] ❌ curl bulunamadı. Hermes runtime curl gerektirir.")
             return False
 
         self._ready = True
-        print("[hermes] ✅ Runtime hazır (API anahtarı yapılandırıldı)")
+        _LOG.info("[hermes] ✅ Runtime hazır (API anahtarı yapılandırıldı)")
         return True
 
     def _find_api_key(self) -> str:
@@ -327,16 +330,3 @@ class HermesRuntime(BaseRuntime):
                 f"parallel worker {index} error: {self._short_error(str(exc))}"),
             on_timeout=lambda count: self.log(f"parallel timeout: {count} iş tamamlanmadı"),
         )
-
-    def phase(self, name: str, detail: str = "") -> None:
-        """Faz bildirimi — Hermes stili."""
-        line = "─" * 50
-        print(f"\n{line}")
-        print(f" 🔬 PHASE: {name}")
-        if detail:
-            print(f"    {detail}")
-        print(f"{line}")
-
-    def log(self, message: str) -> None:
-        """Log — Hermes stili."""
-        print(f"  ⚡ {message}")

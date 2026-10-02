@@ -13,6 +13,7 @@ if _THIS_DIR not in sys.path:
     sys.path.insert(0, _THIS_DIR)
 
 from core.config import OPTION_ENV, Config  # noqa: E402  (needs the path set above)
+from core.logs import ensure_configured, get_logger  # noqa: E402
 
 _CONFIG_MAP = OPTION_ENV  # public option -> environment variable (kept for compatibility)
 
@@ -82,7 +83,7 @@ def _start_dashboard(question: str, config: Config, runtime: Any) -> tuple[Any, 
         thread.start()
         return dashboard, stop_event, thread
     except Exception as exc:
-        print(f"  [dashboard] Could not start: {exc}", file=sys.stderr)
+        get_logger("harness").warning(f"[dashboard] Could not start: {exc}")
         return None, None, None
 
 
@@ -114,6 +115,7 @@ def deep_research(question: str, runtime_name: Optional[str] = None,
     except ValueError as exc:
         return _error_result(question, str(exc))
 
+    ensure_configured()
     dashboard = stop_event = thread = None
     try:
         from core import engine
@@ -121,11 +123,8 @@ def deep_research(question: str, runtime_name: Optional[str] = None,
 
         runtime = get_runtime(None if runtime_name in (None, "auto") else runtime_name)
 
-        print(f"\n{'=' * 50}")
-        print("🔬 Deep Dive Skill v2")
-        print(f"   Runtime: {runtime.name}")
-        print(f"   Question: {question[:100]}")
-        print(f"{'=' * 50}")
+        get_logger("harness").info(f"\n{'=' * 50}\n🔬 Deep Dive Skill v2\n   Runtime: {runtime.name}\n"
+                                   f"   Question: {question[:100]}\n{'=' * 50}")
 
         if show_dashboard:
             dashboard, stop_event, thread = _start_dashboard(question, config, runtime)

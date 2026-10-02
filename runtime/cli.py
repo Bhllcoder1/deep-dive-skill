@@ -18,9 +18,12 @@ import subprocess
 from typing import List, Optional, Tuple
 
 from core.jsonparse import extract_json_object
+from core.logs import get_logger
 
 from .generic import GenericRuntime
 
+
+_LOG = get_logger("runtime.cli")
 
 class CliRuntime(GenericRuntime):
     """Base class: subclasses only declare data."""
@@ -75,13 +78,13 @@ class CliRuntime(GenericRuntime):
     def setup(self) -> bool:
         tag = f"[{self.runtime_name}]"
         if self._override_ignored:
-            print(f"{tag} ⚠ {self.env_var}={self._override_ignored!r} is not an executable; using default lookup")
+            _LOG.warning(f"{tag} ⚠ {self.env_var}={self._override_ignored!r} is not an executable; using default lookup")
         if self._cli_cmd:
             self._init_http_client()  # search/fetch need no LLM key
             self._ready = True
-            print(f"{tag} ✅ {self.display_name} CLI detected: {' '.join(self._cli_cmd)}")
+            _LOG.info(f"{tag} ✅ {self.display_name} CLI detected: {' '.join(self._cli_cmd)}")
             return True
-        print(f"{tag} ⚠ No {self.display_name} CLI found; falling back to generic runtime (DeepSeek API)")
+        _LOG.warning(f"{tag} ⚠ No {self.display_name} CLI found; falling back to generic runtime (DeepSeek API)")
         return super().setup()
 
     def agent_call(self, prompt: str, schema: Optional[dict] = None,
@@ -100,14 +103,14 @@ class CliRuntime(GenericRuntime):
             proc = subprocess.run(self._cli_cmd, input=prompt, text=True, capture_output=True,
                                   timeout=self.cli_timeout)
         except (OSError, subprocess.SubprocessError) as exc:
-            print(f"{tag} CLI invocation failed: {type(exc).__name__}; falling back to generic")
+            _LOG.info(f"{tag} CLI invocation failed: {type(exc).__name__}; falling back to generic")
             return None
         if proc.returncode != 0:
-            print(f"{tag} CLI exited {proc.returncode}; falling back to generic")
+            _LOG.info(f"{tag} CLI exited {proc.returncode}; falling back to generic")
             return None
         result = extract_json_object((proc.stdout or "").strip() or (proc.stderr or "").strip(), schema)
         if result is None:
-            print(f"{tag} CLI output contained no JSON; falling back to generic")
+            _LOG.info(f"{tag} CLI output contained no JSON; falling back to generic")
         return result
 
 

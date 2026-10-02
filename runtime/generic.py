@@ -12,6 +12,7 @@ import urllib.parse
 from typing import Any, Callable, List, Optional
 
 from core.jsonparse import extract_json_object
+from core.logs import get_logger
 from core.parallel import run_bounded
 from core.safefetch import USER_AGENT as _USER_AGENT, fetch_text_with_curl, html_to_text
 from core.urlsafe import is_public_http_url, is_safe_to_connect
@@ -26,6 +27,8 @@ _MAX_FETCH_BYTES = 2_000_000
 _MAX_PARALLEL_WORKERS = 20
 _PARALLEL_TIMEOUT = 120
 
+
+_LOG = get_logger("runtime.generic")
 
 class GenericRuntime(BaseRuntime):
     """Generic Python runtime with no required dependency beyond Python and curl."""
@@ -47,11 +50,11 @@ class GenericRuntime(BaseRuntime):
         self._api_key = os.environ.get("DEEPSEEK_API_KEY", "").strip() or self._dotenv_api_key()
         self._api_url = self._api_endpoint()
         if not self._api_key:
-            print("[generic] ❌ DEEPSEEK_API_KEY bulunamadı.")
-            print("  export DEEPSEEK_API_KEY='sk-...'")
+            _LOG.error("[generic] ❌ DEEPSEEK_API_KEY bulunamadı.")
+            _LOG.info("  export DEEPSEEK_API_KEY='sk-...'")
             return False
         if not self._api_url:
-            print("[generic] ❌ LLM_API_BASE geçerli bir http(s) API adresi değil.")
+            _LOG.error("[generic] ❌ LLM_API_BASE geçerli bir http(s) API adresi değil.")
             return False
 
         if not self._init_http_client():
@@ -59,7 +62,7 @@ class GenericRuntime(BaseRuntime):
 
         self._ready = True
         client = "requests" if self._has_requests else "curl"
-        print(f"[generic] ✅ Runtime hazır ({client})")
+        _LOG.info(f"[generic] ✅ Runtime hazır ({client})")
         return True
 
     def _init_http_client(self) -> bool:
@@ -73,17 +76,17 @@ class GenericRuntime(BaseRuntime):
         self._curl_path = shutil.which("curl")
         if not self._has_requests:
             if not self._curl_path:
-                print("[generic] ❌ Ne requests ne curl bulunamadı. requests yükleyin veya curl sağlayın.")
+                _LOG.error("[generic] ❌ Ne requests ne curl bulunamadı. requests yükleyin veya curl sağlayın.")
                 return False
             try:
                 probe = subprocess.run(
                     [self._curl_path, "--version"], capture_output=True, text=True, timeout=3
                 )
             except (OSError, subprocess.TimeoutExpired) as exc:
-                print(f"[generic] ❌ curl çalıştırılamadı: {exc}")
+                _LOG.error(f"[generic] ❌ curl çalıştırılamadı: {exc}")
                 return False
             if probe.returncode != 0:
-                print("[generic] ❌ curl kullanılabilir değil.")
+                _LOG.error("[generic] ❌ curl kullanılabilir değil.")
                 return False
         return True
 
@@ -131,7 +134,7 @@ class GenericRuntime(BaseRuntime):
         start = time.monotonic()
         phase_s = f"[{phase}] " if phase else ""
         label_s = f"{label}: " if label else ""
-        print(f"  {phase_s}{label_s}agent")
+        _LOG.info(f"  {phase_s}{label_s}agent")
 
         payload = {
             "model": os.environ.get("LLM_MODEL", "deepseek-chat"),
@@ -152,7 +155,7 @@ class GenericRuntime(BaseRuntime):
 
         elapsed = time.monotonic() - start
         status = f"✓ {elapsed:.1f}s" if result is not None else f"❌ failed ({elapsed:.1f}s)"
-        print(f"  {phase_s}{label_s}{status}")
+        _LOG.info(f"  {phase_s}{label_s}{status}")
         return result
 
     def _requests_call(self, payload: dict, schema: Optional[dict]) -> Optional[dict]:
@@ -166,19 +169,19 @@ class GenericRuntime(BaseRuntime):
                 timeout=(_CONNECT_TIMEOUT, _API_TIMEOUT),
             )
         except requests.RequestException as exc:
-            print(f"  [generic] requests error: {exc}")
+            _LOG.error(f"  [generic] requests error: {exc}")
             return None
         except Exception as exc:
-            print(f"  [generic] requests başlatılamadı: {exc}")
+            _LOG.info(f"  [generic] requests başlatılamadı: {exc}")
             return None
 
         try:
             if not response.ok:
-                print(f"  [generic] API hata {response.status_code}: {response.text[:200]}")
+                _LOG.error(f"  [generic] API hata {response.status_code}: {response.text[:200]}")
                 return None
             return self._completion_json(response.json(), schema)
         except (ValueError, TypeError, KeyError, IndexError) as exc:
-            print(f"  [generic] geçersiz API yanıtı: {exc}")
+            _LOG.info(f"  [generic] geçersiz API yanıtı: {exc}")
             return None
         finally:
             response.close()
@@ -203,14 +206,14 @@ class GenericRuntime(BaseRuntime):
                 capture_output=True, text=True, errors="replace", timeout=_API_TIMEOUT + _CONNECT_TIMEOUT + 5,
             )
             if result.returncode != 0:
-                print(f"  [generic] curl API hata: {result.stderr.strip()[:200]}")
+                _LOG.error(f"  [generic] curl API hata: {result.stderr.strip()[:200]}")
                 return None
             try:
                 return self._completion_json(json.loads(result.stdout), schema)
             except (json.JSONDecodeError, TypeError, KeyError, IndexError, ValueError) as exc:
-                print(f"  [generic] curl geçersiz API yanıtı: {exc}")
+                _LOG.info(f"  [generic] curl geçersiz API yanıtı: {exc}")
         except (OSError, subprocess.TimeoutExpired) as exc:
-            print(f"  [generic] curl error: {exc}")
+            _LOG.error(f"  [generic] curl error: {exc}")
         finally:
             if payload_path:
                 try:
@@ -452,14 +455,3 @@ class GenericRuntime(BaseRuntime):
             on_error=lambda index, exc: self.log(f"parallel görev {index} hata verdi: {type(exc).__name__}"),
             on_timeout=lambda count: self.log(f"{count} parallel görev {_PARALLEL_TIMEOUT}s zaman sınırını aştı"),
         )
-
-    def phase(self, name: str, detail: str = "") -> None:
-        line = "─" * 50
-        print(f"\n{line}")
-        print(f" 📋 PHASE: {name}")
-        if detail:
-            print(f"    {detail}")
-        print(line)
-
-    def log(self, message: str) -> None:
-        print(f"  • {message}")
