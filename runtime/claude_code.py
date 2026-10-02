@@ -13,9 +13,12 @@ import re
 import subprocess
 import sys
 import urllib.parse
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable, List, Mapping, Optional
-from urllib.parse import urlparse
+
+from core.jsonparse import extract_json_object
+from core.parallel import run_bounded
+from core.safefetch import fetch_text_with_curl
+from core.urlsafe import is_public_http_url
 
 from .base import BaseRuntime
 
@@ -64,18 +67,6 @@ class ClaudeCodeRuntime(BaseRuntime):
     @staticmethod
     def _valid_schema(schema: Optional[dict]) -> bool:
         return schema is None or isinstance(schema, Mapping)
-
-    @staticmethod
-    def _matches_schema(data: dict, schema: Optional[dict]) -> bool:
-        """Validate the small schema subset the runtime promises to enforce."""
-        if not isinstance(data, dict):
-            return False
-        if not schema:
-            return True
-        required = schema.get("required", [])
-        if not isinstance(required, list) or not all(isinstance(key, str) for key in required):
-            return False
-        return all(data.get(key) is not None for key in required)
 
     def agent_call(self, prompt: str, schema: Optional[dict] = None,
                    label: str = "", phase: str = "") -> Optional[dict]:
@@ -144,48 +135,13 @@ class ClaudeCodeRuntime(BaseRuntime):
                 return None
             message = choices[0].get("message") if isinstance(choices[0], dict) else None
             content = message.get("content") if isinstance(message, dict) else None
-            result = self._extract_json(content, schema)
+            result = extract_json_object(content, schema)
             if result is None:
                 self.log("agent fallback returned malformed or schema-incomplete JSON")
             return result
         except (requests.RequestException, ValueError, TypeError, KeyError, IndexError) as exc:
             self.log(f"agent fallback error: {exc}")
             return None
-
-    def _extract_json(self, text: str, schema: Optional[dict] = None) -> Optional[dict]:
-        """Extract one complete JSON object, tolerating prose and code fences."""
-        if not isinstance(text, str) or not text.strip():
-            return None
-
-        candidates = [text.strip()]
-        candidates.extend(match.group(1).strip() for match in re.finditer(
-            r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL | re.IGNORECASE
-        ))
-        decoder = json.JSONDecoder()
-        for candidate in candidates:
-            try:
-                parsed = json.loads(candidate)
-                if self._matches_schema(parsed, schema):
-                    return parsed
-            except json.JSONDecodeError:
-                pass
-
-            # raw_decode finds balanced objects and avoids the old greedy
-            # ``{.*}`` regex, which swallowed multiple/partial JSON objects.
-            start = 0
-            while True:
-                start = candidate.find("{", start)
-                if start < 0:
-                    break
-                try:
-                    parsed, _ = decoder.raw_decode(candidate[start:])
-                except json.JSONDecodeError:
-                    start += 1
-                    continue
-                if self._matches_schema(parsed, schema):
-                    return parsed
-                start += 1
-        return None
 
     def web_search(self, query: str, max_results: int = 6) -> List[dict]:
         """Search via Claude's bridge or DuckDuckGo's HTML fallback."""
@@ -225,34 +181,17 @@ class ClaudeCodeRuntime(BaseRuntime):
             return []
 
     def web_fetch(self, url: str) -> Optional[str]:
-        """Fetch an HTTP(S) URL through the bridge or curl fallback."""
+        """Fetch a public HTTP(S) URL through the bridge or the shared safe curl fetch."""
         if not isinstance(url, str):
             self.log("web fetch rejected: URL must be a string")
             return None
-        parsed_url = urlparse(url)
-        if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
-            self.log("web fetch rejected: URL must be absolute HTTP(S)")
+        if not is_public_http_url(url):
+            self.log("web fetch rejected: URL must be a public absolute HTTP(S) URL")
             return None
 
         if self._in_claude:
             self._emit_marker("WebFetch", {"url": url})
-
-        try:
-            response = subprocess.run(
-                ["curl", "-sL", "--max-time", "30", url, "-H", "User-Agent: Mozilla/5.0"],
-                capture_output=True,
-                text=True,
-                timeout=35,
-            )
-            if response.returncode != 0 or not response.stdout.strip():
-                return None
-            text = re.sub(r"<script[^>]*>.*?</script>", "", response.stdout, flags=re.DOTALL | re.IGNORECASE)
-            text = re.sub(r"<style[^>]*>.*?</style>", "", text, flags=re.DOTALL | re.IGNORECASE)
-            text = re.sub(r"<[^>]+>", " ", text)
-            return re.sub(r"\s+", " ", text).strip()[:15000] or None
-        except (OSError, subprocess.SubprocessError) as exc:
-            self.log(f"web fetch fallback error: {exc}")
-            return None
+        return fetch_text_with_curl(url, "curl", user_agent="Mozilla/5.0", max_time=30)
 
     def run_parallel(self, fn_list: List[Callable[[], Any]],
                      max_workers: int = 5) -> List[Any]:
@@ -270,16 +209,10 @@ class ClaudeCodeRuntime(BaseRuntime):
         if self._in_claude:
             self._emit_marker("PARALLEL", {"count": len(fn_list), "max_workers": max_workers})
 
-        results = [None] * len(fn_list)
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {executor.submit(fn): index for index, fn in enumerate(fn_list)}
-            for future in as_completed(futures):
-                index = futures[future]
-                try:
-                    results[index] = future.result()
-                except Exception as exc:
-                    self.log(f"parallel worker {index} error: {exc}")
-        return results
+        return run_bounded(
+            fn_list, max_workers,
+            on_error=lambda index, exc: self.log(f"parallel worker {index} error: {exc}"),
+        )
 
     def phase(self, name: str, detail: str = "") -> None:
         """Report progress without corrupting JSON emitted on stdout."""

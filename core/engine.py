@@ -2,15 +2,14 @@
 Deep Research Engine — universal Scope → Search → Fetch → Verify → Synthesize pipeline.
 """
 
-import ipaddress
-import json
 import os
 import threading
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlsplit, urlunsplit
 
+from core.jsonparse import extract_json_object
 from core.schemas import EXTRACT_SCHEMA, REPORT_SCHEMA, SCOPE_SCHEMA, SEARCH_SCHEMA, VERDICT_SCHEMA
 from core.tiers import HARD_MAX_WORKERS, resolve_tier
+from core.urlsafe import normalize_public_url
 from runtime import BaseRuntime, get_runtime
 
 
@@ -272,18 +271,7 @@ def _run_parallel(rt: BaseRuntime, functions: List[Any]) -> List[Any]:
 
 
 def _as_dict(value: Any) -> Optional[dict]:
-    if isinstance(value, dict):
-        return value
-    if not isinstance(value, str):
-        return None
-    text = value.strip()
-    if text.startswith("```") and text.endswith("```"):
-        text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-    try:
-        parsed = json.loads(text)
-    except (TypeError, ValueError):
-        return None
-    return parsed if isinstance(parsed, dict) else None
+    return extract_json_object(value)
 
 
 def _scope_schema() -> dict:
@@ -356,30 +344,7 @@ def _valid_search_results(value: Any) -> List[Dict[str, str]]:
 
 
 def _fetchable_url(value: Any) -> Optional[str]:
-    if not isinstance(value, str) or not value.strip():
-        return None
-    try:
-        parsed = urlsplit(value.strip())
-        if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
-            return None
-        host = parsed.hostname.rstrip(".").lower()
-        if host in {"localhost", "localhost.localdomain"}:
-            return None
-        try:
-            address = ipaddress.ip_address(host)
-            if any((address.is_private, address.is_loopback, address.is_link_local,
-                    address.is_multicast, address.is_reserved, address.is_unspecified)):
-                return None
-        except ValueError:
-            pass
-        port = parsed.port
-    except ValueError:
-        return None
-
-    netloc = f"[{host}]" if ":" in host else host
-    if port and port not in {80, 443}:
-        netloc += f":{port}"
-    return urlunsplit((parsed.scheme.lower(), netloc, parsed.path or "/", parsed.query, ""))
+    return normalize_public_url(value)
 
 
 def _valid_extraction(value: Optional[dict], source: Dict[str, str]):

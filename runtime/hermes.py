@@ -13,15 +13,18 @@ Kullanım:
 import html
 import json
 import os
-import queue
 import re
 import shutil
 import subprocess
 import tempfile
-import threading
 import time
 from typing import Any, Callable, List, Optional
 from urllib.parse import parse_qs, urlsplit
+
+from core.jsonparse import extract_json_object
+from core.parallel import run_bounded
+from core.safefetch import fetch_text_with_curl
+from core.urlsafe import is_public_http_url
 
 from .base import BaseRuntime
 
@@ -206,7 +209,7 @@ class HermesRuntime(BaseRuntime):
                 self.log(f"{phase_str}{label_str}API yanıtında metin içeriği yok")
                 return None
 
-            parsed = self._extract_json(content, schema)
+            parsed = extract_json_object(content, schema)
             if parsed is not None:
                 self.log(f"{phase_str}{label_str}✓ {elapsed:.1f}s")
             else:
@@ -240,54 +243,11 @@ class HermesRuntime(BaseRuntime):
             pass
         return self._short_error(body)
 
-    def _extract_json(self, text: str, schema: Optional[dict] = None) -> Optional[dict]:
-        """Metinden tek bir JSON nesnesi çıkarır ve gerekli schema alanlarını kontrol eder."""
-        if not isinstance(text, str) or not text.strip():
-            return None
-
-        decoder = json.JSONDecoder()
-        candidates = [text.strip()]
-        candidates.extend(match.group(1).strip() for match in re.finditer(
-            r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL | re.IGNORECASE
-        ))
-        for candidate in candidates:
-            try:
-                parsed = json.loads(candidate)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(parsed, dict) and self._matches_schema(parsed, schema):
-                return parsed
-
-        # raw_decode avoids the old greedy {.*} regex, which merged multiple
-        # objects or braces in prose into malformed JSON.
-        for match in re.finditer(r"\{", text):
-            try:
-                parsed, _ = decoder.raw_decode(text[match.start():])
-            except json.JSONDecodeError:
-                continue
-            if isinstance(parsed, dict) and self._matches_schema(parsed, schema):
-                return parsed
-        return None
-
-    @staticmethod
-    def _matches_schema(parsed: dict, schema: Optional[dict]) -> bool:
-        if not schema:
-            return True
-        required = schema.get("required", [])
-        return isinstance(required, list) and all(isinstance(name, str) and name in parsed for name in required)
-
     @staticmethod
     def _valid_result_limit(max_results: int) -> Optional[int]:
         if isinstance(max_results, bool) or not isinstance(max_results, int) or max_results < 1:
             return None
         return max_results
-
-    @staticmethod
-    def _is_http_url(url: str) -> bool:
-        if not isinstance(url, str) or not url or any(char.isspace() for char in url):
-            return False
-        parsed = urlsplit(url)
-        return parsed.scheme.lower() in {"http", "https"} and bool(parsed.hostname)
 
     def _ddg_result_url(self, url: str) -> Optional[str]:
         url = html.unescape(url).strip()
@@ -296,7 +256,7 @@ class HermesRuntime(BaseRuntime):
         parsed = urlsplit(url)
         if parsed.hostname and parsed.hostname.lower().endswith("duckduckgo.com") and parsed.path.startswith("/l/"):
             url = parse_qs(parsed.query).get("uddg", [""])[0]
-        return url if self._is_http_url(url) else None
+        return url if is_public_http_url(url) else None
 
     def web_search(self, query: str, max_results: int = 6) -> List[dict]:
         """DuckDuckGo HTML ile senkron web araması yapar."""
@@ -341,103 +301,32 @@ class HermesRuntime(BaseRuntime):
         return []
 
     def web_fetch(self, url: str) -> Optional[str]:
-        """HTTP(S) URL içeriğini curl ile getirip HTML'den metne dönüştürür."""
-        if not self._is_http_url(url):
-            self.log("web_fetch geçersiz veya desteklenmeyen URL nedeniyle atlandı")
+        """Public HTTP(S) URL'yi (yönlendirmeler ve DNS dahil kontrollü) metne çevirir."""
+        if not is_public_http_url(url):
+            self.log("web_fetch geçersiz, yerel veya desteklenmeyen URL nedeniyle atlandı")
             return None
         self.log(f"web_fetch: {url[:80]}...")
-
-        try:
-            result = subprocess.run(
-                [
-                    "curl", "-sS", "-L", "--proto", "=http,https", "--proto-redir", "=http,https",
-                    "--connect-timeout", "10", "--max-time", str(self.FETCH_TIMEOUT_SECONDS),
-                    "-H", f"User-Agent: {self.USER_AGENT}", "--", url,
-                ],
-                capture_output=True,
-                text=True,
-                errors="replace",
-                timeout=self.FETCH_TIMEOUT_SECONDS + 5,
-            )
-            if result.returncode != 0:
-                self.log(f"fetch hatası: {self._short_error(result.stderr)}")
-                return None
-            if not result.stdout.strip():
-                return None
-            text = re.sub(r"<!--.*?-->", "", result.stdout, flags=re.DOTALL)
-            text = re.sub(r"<(?:script|style)[^>]*>.*?</(?:script|style)>", "", text, flags=re.DOTALL | re.IGNORECASE)
-            text = html.unescape(re.sub(r"<[^>]+>", " ", text))
-            return re.sub(r"\s+", " ", text).strip()[:15000] or None
-        except subprocess.TimeoutExpired:
-            self.log("fetch zaman aşımına uğradı")
-        except OSError as error:
-            self.log(f"fetch hatası: {self._short_error(str(error))}")
-        return None
+        text = fetch_text_with_curl(url, "curl", user_agent=self.USER_AGENT,
+                                    max_time=self.FETCH_TIMEOUT_SECONDS)
+        if text is None:
+            self.log("fetch başarısız (reddedildi, hata veya zaman aşımı)")
+        return text
 
     def run_parallel(self, fn_list: List[Callable[[], Any]],
                      max_workers: int = 3) -> List[Any]:
-        """İşleri sınırlı sayıda daemon worker ile, sıra korunarak çalıştırır."""
+        """İşleri sınırlı sayıda worker ile, sıra korunarak çalıştırır."""
         if not isinstance(fn_list, list):
             raise TypeError("fn_list must be a list of callables")
         if any(not callable(fn) for fn in fn_list):
             raise TypeError("fn_list must contain only callables")
         if isinstance(max_workers, bool) or not isinstance(max_workers, int) or max_workers < 1:
             raise ValueError("max_workers must be a positive integer")
-        if not fn_list:
-            return []
-
-        results = [None] * len(fn_list)
-        errors = [None] * len(fn_list)
-        completed = [False] * len(fn_list)
-        work_queue = queue.Queue()
-        lock = threading.Lock()
-        stop_workers = threading.Event()
-        for index, fn in enumerate(fn_list):
-            work_queue.put((index, fn))
-
-        def worker() -> None:
-            while not stop_workers.is_set():
-                try:
-                    index, fn = work_queue.get_nowait()
-                except queue.Empty:
-                    return
-                try:
-                    value = fn()
-                    with lock:
-                        if not stop_workers.is_set():
-                            results[index] = value
-                except Exception as error:
-                    with lock:
-                        if not stop_workers.is_set():
-                            errors[index] = error
-                finally:
-                    with lock:
-                        if not stop_workers.is_set():
-                            completed[index] = True
-                    work_queue.task_done()
-
-        workers = [threading.Thread(target=worker, daemon=True) for _ in range(min(max_workers, len(fn_list)))]
-        for thread in workers:
-            thread.start()
-
-        deadline = time.monotonic() + self.PARALLEL_TIMEOUT_SECONDS
-        for thread in workers:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                break
-            thread.join(remaining)
-
-        with lock:
-            timed_out = [index for index, done in enumerate(completed) if not done]
-            if timed_out:
-                stop_workers.set()
-            worker_errors = list(enumerate(errors))
-        if timed_out:
-            self.log(f"parallel timeout: {len(timed_out)} iş tamamlanmadı")
-        for index, error in worker_errors:
-            if error is not None:
-                self.log(f"parallel worker {index} error: {self._short_error(str(error))}")
-        return results
+        return run_bounded(
+            fn_list, max_workers, timeout=self.PARALLEL_TIMEOUT_SECONDS,
+            on_error=lambda index, exc: self.log(
+                f"parallel worker {index} error: {self._short_error(str(exc))}"),
+            on_timeout=lambda count: self.log(f"parallel timeout: {count} iş tamamlanmadı"),
+        )
 
     def phase(self, name: str, detail: str = "") -> None:
         """Faz bildirimi — Hermes stili."""

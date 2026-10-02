@@ -1,17 +1,20 @@
 """Portable fallback runtime using requests when available and curl otherwise."""
 
 import html
-import ipaddress
 import json
 import os
 import re
 import shutil
 import subprocess
 import tempfile
-import threading
 import time
 import urllib.parse
 from typing import Any, Callable, List, Optional
+
+from core.jsonparse import extract_json_object
+from core.parallel import run_bounded
+from core.safefetch import USER_AGENT as _USER_AGENT, fetch_text_with_curl, html_to_text
+from core.urlsafe import is_public_http_url, is_safe_to_connect
 
 from .base import BaseRuntime
 
@@ -22,7 +25,6 @@ _FETCH_TIMEOUT = 30
 _MAX_FETCH_BYTES = 2_000_000
 _MAX_PARALLEL_WORKERS = 20
 _PARALLEL_TIMEOUT = 120
-_USER_AGENT = "DeepDive/1.0 (+https://github.com/YOUR_USERNAME/deep-dive-skill)"
 
 
 class GenericRuntime(BaseRuntime):
@@ -220,33 +222,7 @@ class GenericRuntime(BaseRuntime):
         message = choices[0].get("message")
         if not isinstance(message, dict):
             raise ValueError("response has no message")
-        return self._extract_json(message.get("content"), schema)
-
-    def _extract_json(self, text: Any, schema: Optional[dict] = None) -> Optional[dict]:
-        """Extract the first JSON object from a model response, never returning arrays/scalars."""
-        if not isinstance(text, str) or not text.strip():
-            return None
-        text = text.lstrip("\ufeff").strip()
-        candidates = [text]
-        candidates.extend(re.findall(r"```(?:json)?\s*(.*?)\s*```", text, re.IGNORECASE | re.DOTALL))
-        decoder = json.JSONDecoder()
-        for candidate in candidates:
-            try:
-                parsed = json.loads(candidate)
-                if isinstance(parsed, dict):
-                    return parsed
-            except json.JSONDecodeError:
-                pass
-            start = candidate.find("{")
-            while start >= 0:
-                try:
-                    parsed, _ = decoder.raw_decode(candidate[start:])
-                    if isinstance(parsed, dict):
-                        return parsed
-                except json.JSONDecodeError:
-                    pass
-                start = candidate.find("{", start + 1)
-        return None
+        return extract_json_object(message.get("content"), schema)
 
     def web_search(self, query: str, max_results: int = 6) -> List[dict]:
         """Search DDG first, then Google Custom Search when credentials are configured."""
@@ -359,7 +335,7 @@ class GenericRuntime(BaseRuntime):
         return url
 
     def _append_search_result(self, results: List[dict], url: Any, title: Any, snippet: Any, relevance: str) -> None:
-        if not self._safe_http_url(url) or any(item["url"] == url for item in results):
+        if not is_public_http_url(url) or any(item["url"] == url for item in results):
             return
         results.append({
             "url": url,
@@ -370,8 +346,8 @@ class GenericRuntime(BaseRuntime):
 
     def web_fetch(self, url: str) -> Optional[str]:
         """Fetch a public HTTP(S) URL with bounded response size and timeouts."""
-        if not self._safe_http_url(url):
-            self.log("geçersiz veya yerel URL fetch için reddedildi")
+        if not is_safe_to_connect(url):
+            self.log("geçersiz, yerel veya özel ağa çözümlenen URL fetch için reddedildi")
             return None
         if self._has_requests:
             fetched = self._requests_fetch(url)
@@ -392,7 +368,7 @@ class GenericRuntime(BaseRuntime):
                     location = response.headers.get("Location")
                     response.close()
                     current_url = urllib.parse.urljoin(current_url, location or "")
-                    if not self._safe_http_url(current_url):
+                    if not is_safe_to_connect(current_url):
                         return None
                     continue
                 try:
@@ -409,7 +385,7 @@ class GenericRuntime(BaseRuntime):
                         body.extend(chunk)
                         if len(body) > _MAX_FETCH_BYTES:
                             return None
-                    return self._html_to_text(bytes(body).decode(response.encoding or "utf-8", errors="replace"))
+                    return html_to_text(bytes(body).decode(response.encoding or "utf-8", errors="replace"))
                 finally:
                     response.close()
         except (requests.RequestException, OSError, ValueError, TypeError):
@@ -419,42 +395,8 @@ class GenericRuntime(BaseRuntime):
     def _curl_fetch(self, url: str) -> Optional[str]:
         if not self._curl_path:
             return None
-        try:
-            result = subprocess.run(
-                [
-                    self._curl_path, "--silent", "--show-error", "--fail", "--connect-timeout", str(_CONNECT_TIMEOUT),
-                    "--max-time", str(_FETCH_TIMEOUT), "--max-filesize", str(_MAX_FETCH_BYTES), url, "-A", _USER_AGENT,
-                ],
-                capture_output=True, text=True, errors="replace", timeout=_FETCH_TIMEOUT + _CONNECT_TIMEOUT + 5,
-            )
-        except (OSError, subprocess.TimeoutExpired):
-            return None
-        return self._html_to_text(result.stdout) if result.returncode == 0 and result.stdout.strip() else None
-
-    @staticmethod
-    def _safe_http_url(url: Any) -> bool:
-        if not isinstance(url, str) or not url or len(url) > 2048:
-            return False
-        parsed = urllib.parse.urlsplit(url)
-        if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
-            return False
-        hostname = parsed.hostname.rstrip(".").lower()
-        if hostname == "localhost" or hostname.endswith(".localhost"):
-            return False
-        try:
-            address = ipaddress.ip_address(hostname)
-        except ValueError:
-            return True
-        return not (address.is_private or address.is_loopback or address.is_link_local or address.is_multicast or address.is_reserved or address.is_unspecified)
-
-    @staticmethod
-    def _html_to_text(content: Any) -> str:
-        if not isinstance(content, str):
-            return ""
-        text = re.sub(r"<(?:script|style|noscript)[^>]*>.*?</(?:script|style|noscript)>", " ", content, flags=re.IGNORECASE | re.DOTALL)
-        text = re.sub(r"<!--.*?-->", " ", text, flags=re.DOTALL)
-        text = html.unescape(re.sub(r"<[^>]+>", " ", text))
-        return re.sub(r"\s+", " ", text).strip()[:15_000]
+        return fetch_text_with_curl(url, self._curl_path, max_time=_FETCH_TIMEOUT,
+                                    connect_timeout=_CONNECT_TIMEOUT, max_bytes=_MAX_FETCH_BYTES)
 
     def run_parallel(self, fn_list: List[Callable[[], Any]], max_workers: int = 3) -> List[Any]:
         """Run work in bounded worker threads while retaining input order."""
@@ -464,51 +406,11 @@ class GenericRuntime(BaseRuntime):
             raise ValueError("max_workers must be a positive integer")
         if not all(callable(fn) for fn in fn_list):
             raise TypeError("fn_list must contain only callables")
-        if not fn_list:
-            return []
-
-        results: List[Any] = [None] * len(fn_list)
-        next_index = 0
-        errors = 0
-        lock = threading.Lock()
-        deadline = time.monotonic() + _PARALLEL_TIMEOUT
-
-        def worker() -> None:
-            nonlocal next_index, errors
-            while True:
-                with lock:
-                    if next_index >= len(fn_list) or time.monotonic() >= deadline:
-                        return
-                    index = next_index
-                    next_index += 1
-                try:
-                    value = fn_list[index]()
-                except Exception:
-                    with lock:
-                        errors += 1
-                    continue
-                with lock:
-                    results[index] = value
-
-        workers = min(max_workers, _MAX_PARALLEL_WORKERS, len(fn_list))
-        threads = [threading.Thread(target=worker, daemon=True) for _ in range(workers)]
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                break
-            thread.join(remaining)
-
-        # Return a snapshot: daemon workers that exceed the deadline cannot mutate a caller's list.
-        with lock:
-            snapshot = list(results)
-            timed_out = next_index < len(fn_list) or any(thread.is_alive() for thread in threads)
-        if errors:
-            self.log(f"{errors} parallel görev hata verdi")
-        if timed_out:
-            self.log(f"parallel görevler {_PARALLEL_TIMEOUT}s zaman sınırını aştı")
-        return snapshot
+        return run_bounded(
+            list(fn_list), min(max_workers, _MAX_PARALLEL_WORKERS), timeout=_PARALLEL_TIMEOUT,
+            on_error=lambda index, exc: self.log(f"parallel görev {index} hata verdi: {type(exc).__name__}"),
+            on_timeout=lambda count: self.log(f"{count} parallel görev {_PARALLEL_TIMEOUT}s zaman sınırını aştı"),
+        )
 
     def phase(self, name: str, detail: str = "") -> None:
         line = "─" * 50
