@@ -5,6 +5,7 @@ Deep Research Engine — universal Scope → Search → Fetch → Verify → Syn
 import ipaddress
 import json
 import os
+import threading
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlsplit, urlunsplit
 
@@ -40,6 +41,18 @@ MAX_VERIFY_CLAIMS = _cfg_int("DR_MAX_VERIFY_CLAIMS", "max_verify_claims")
 MAX_WORKERS = min(_cfg_int("DR_MAX_WORKERS", "max_workers"), HARD_MAX_WORKERS)
 
 
+class _CallCounter:
+    """Thread-safe count of agent_call invocations actually made during one run."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.value = 0
+
+    def increment(self) -> None:
+        with self._lock:
+            self.value += 1
+
+
 def run(question: str, runtime: Optional[BaseRuntime] = None,
         dashboard: Optional[Any] = None) -> dict:
     """Run the full deep-research pipeline and return a structured report."""
@@ -61,8 +74,9 @@ def run(question: str, runtime: Optional[BaseRuntime] = None,
         except Exception:
             pass
 
+    calls = _CallCounter()
     _phase(rt, "1/5", f"Scope — soruyu {ANGLES} search angle'a böl: {question[:80]}...")
-    scope = _agent_call(rt, _scope_prompt(question), _scope_schema(), "scope", "Scope")
+    scope = _agent_call(rt, _scope_prompt(question), _scope_schema(), "scope", "Scope", calls)
     if not scope:
         return {"error": "Scope agent returned no valid JSON result.", "question": question}
 
@@ -78,16 +92,23 @@ def run(question: str, runtime: Optional[BaseRuntime] = None,
     all_sources: List[Dict[str, str]] = []
     dupes: List[Dict[str, Any]] = []
 
+    search_fallbacks = 0
     for angle in angles:
         _log(rt, f"Aranıyor: {angle['label']} ({angle['query'][:60]}...)")
-        search_result = _agent_call(
-            rt, _search_prompt(angle, question), SEARCH_SCHEMA,
-            f"search:{angle['label']}", "Search",
-        )
-        if not search_result:
-            continue
-
-        results = _valid_search_results(search_result.get("results"))
+        results = _web_search(rt, angle["query"])
+        via = "web_search"
+        if not results:
+            # The LLM has no browser here, so URLs it "finds" are unverified. Only used
+            # when the real search backend returned nothing, and always logged.
+            _log(rt, f"web_search '{angle['label']}' için sonuç vermedi — LLM yedeğine geçiliyor "
+                     "(fallback; kaynaklar doğrulanmamış olabilir)")
+            search_fallbacks += 1
+            via = "llm-fallback"
+            search_result = _agent_call(
+                rt, _search_prompt(angle, question), SEARCH_SCHEMA,
+                f"search:{angle['label']}", "Search", calls,
+            )
+            results = _valid_search_results((search_result or {}).get("results"))
         results.sort(key=lambda result: _rel_rank(result["relevance"]))
         for result in results:
             key = _norm_url(result["url"])
@@ -98,7 +119,7 @@ def run(question: str, runtime: Optional[BaseRuntime] = None,
                 continue
 
             seen_urls[key] = {"angle": angle["label"], "title": result["title"]}
-            all_sources.append({**result, "angle": angle["label"]})
+            all_sources.append({**result, "angle": angle["label"], "via": via})
 
     _log(rt, f"{len(all_sources)} unique kaynak, {len(dupes)} dupe, {len(all_sources)} slot kullanıldı")
 
@@ -113,7 +134,7 @@ def run(question: str, runtime: Optional[BaseRuntime] = None,
         if content:
             extracted = _agent_call(
                 rt, _fetch_prompt(source, question, source["angle"], content), EXTRACT_SCHEMA,
-                f"fetch:{(source['title'] or source['url'])[:40]}", "Fetch",
+                f"fetch:{(source['title'] or source['url'])[:40]}", "Fetch", calls,
             )
 
         quality, publish_date, claims = _valid_extraction(extracted, source)
@@ -121,6 +142,7 @@ def run(question: str, runtime: Optional[BaseRuntime] = None,
             "url": source["url"],
             "title": source["title"],
             "angle": source["angle"],
+            "via": source.get("via", "web_search"),
             "sourceQuality": quality,
             "publishDate": publish_date,
             "claims": claims,
@@ -144,7 +166,7 @@ def run(question: str, runtime: Optional[BaseRuntime] = None,
         for voter in range(VOTES_PER_CLAIM):
             verify_fns.append(lambda claim=claim, voter=voter: _agent_call(
                 rt, _verify_prompt(claim, question, voter, VOTES_PER_CLAIM), VERDICT_SCHEMA,
-                f"v{voter}:{claim['claim'][:40]}", "Verify",
+                f"v{voter}:{claim['claim'][:40]}", "Verify", calls,
             ))
 
     _log(rt, f"{len(verify_fns)} verifier agent {'paralel' if len(verify_fns) > 1 else 'sıralı'} çalışıyor "
@@ -179,14 +201,14 @@ def run(question: str, runtime: Optional[BaseRuntime] = None,
     _phase(rt, "5/5", "Synthesize — rapor sentezleniyor")
     if not confirmed:
         return _no_confirmed_result(question, runtime_name, angles, fetched_sources,
-                                    all_claims, voted, killed, unverified, dupes)
+                                    all_claims, voted, killed, unverified, dupes, calls.value, search_fallbacks)
 
     report = _agent_call(rt, _synthesis_prompt(question, confirmed, killed, unverified),
-                         REPORT_SCHEMA, "synthesize", "Synthesize")
+                         REPORT_SCHEMA, "synthesize", "Synthesize", calls)
     report = _valid_report(report, {claim["sourceUrl"] for claim in confirmed})
     if not report:
         return _salvage_result(question, runtime_name, angles, fetched_sources, all_claims,
-                               voted, confirmed, killed, unverified, dupes)
+                               voted, confirmed, killed, unverified, dupes, calls.value, search_fallbacks)
 
     return {
         "question": question,
@@ -196,18 +218,31 @@ def run(question: str, runtime: Optional[BaseRuntime] = None,
         "unverified": _unverified_status(unverified),
         "sources": _sources(fetched_sources, include_angle=True),
         "stats": _stats(runtime_name, angles, fetched_sources, all_claims, voted, confirmed,
-                        killed, unverified, len(report["findings"]), dupes, len(verify_fns)),
+                        killed, unverified, len(report["findings"]), dupes, calls.value, search_fallbacks),
     }
 
 
 # ─── Runtime and response boundaries ───
 
-def _agent_call(rt: BaseRuntime, prompt: str, schema: dict, label: str, phase: str) -> Optional[dict]:
+def _agent_call(rt: BaseRuntime, prompt: str, schema: dict, label: str, phase: str,
+                counter: Optional[_CallCounter] = None) -> Optional[dict]:
+    if counter is not None:
+        counter.increment()
     try:
         return _as_dict(rt.agent_call(prompt, schema=schema, label=label, phase=phase))
     except Exception as error:
         _log(rt, f"{label} başarısız: {type(error).__name__}")
         return None
+
+
+def _web_search(rt: BaseRuntime, query: str) -> List[Dict[str, str]]:
+    """Real search backend first; any backend failure degrades to an empty result."""
+    try:
+        raw = rt.web_search(query, max_results=6)
+    except Exception as error:
+        _log(rt, f"web_search başarısız ({type(error).__name__})")
+        return []
+    return _valid_search_results(raw)
 
 
 def _web_fetch(rt: BaseRuntime, url: str) -> Optional[str]:
@@ -401,6 +436,10 @@ def _valid_report(value: Optional[dict], allowed_sources: set) -> Optional[dict]
         findings.append({"claim": claim, "confidence": confidence if confidence in {"high", "medium", "low"} else "low",
                          "sources": sources, "evidence": _text(item.get("evidence"), 5000),
                          "vote": _text(item.get("vote"), 100)})
+    if not findings:
+        # No finding cites a confirmed source: the summary is unsupported, so let the
+        # caller salvage the verified claims instead of dropping them.
+        return None
     return {"summary": summary, "findings": findings,
             "caveats": _text(value.get("caveats"), 5000),
             "openQuestions": [_text(item, 500) for item in value.get("openQuestions", [])
@@ -496,6 +535,7 @@ def _sources(fetched_sources: List[dict], include_angle: bool = False) -> List[d
     return [{
         "url": source["url"], "quality": source["sourceQuality"],
         **({"angle": source.get("angle", "")} if include_angle else {}),
+        "via": source.get("via", "web_search"),
         "claimCount": len(source["claims"]),
     } for source in fetched_sources]
 
@@ -512,11 +552,12 @@ def _unverified_status(claims: List[dict]) -> List[dict]:
 
 def _stats(runtime_name: str, angles: List[dict], fetched_sources: List[dict], all_claims: List[dict],
            voted: List[dict], confirmed: List[dict], killed: List[dict], unverified: List[dict],
-           after_synthesis: int, dupes: List[dict], verifier_calls: int) -> dict:
+           after_synthesis: int, dupes: List[dict], agent_calls: int,
+           search_fallbacks: int = 0) -> dict:
     return {"runtime": runtime_name, "angles": len(angles), "sourcesFetched": len(fetched_sources),
             "claimsExtracted": len(all_claims), "claimsVerified": len(voted), "confirmed": len(confirmed),
             "killed": len(killed), "unverified": len(unverified), "afterSynthesis": after_synthesis,
-            "urlDupes": len(dupes), "agentCalls": 1 + len(angles) + len(fetched_sources) + verifier_calls + 1}
+            "urlDupes": len(dupes), "agentCalls": agent_calls, "searchFallbacks": search_fallbacks}
 
 
 def _empty_result(question: str, runtime_name: str, angles: List[dict], fetched_sources: List[dict], dupes: List[dict]) -> dict:
@@ -529,18 +570,20 @@ def _empty_result(question: str, runtime_name: str, angles: List[dict], fetched_
 
 def _no_confirmed_result(question: str, runtime_name: str, angles: List[dict], fetched_sources: List[dict],
                          all_claims: List[dict], voted: List[dict], killed: List[dict],
-                         unverified: List[dict], dupes: List[dict]) -> dict:
+                         unverified: List[dict], dupes: List[dict], agent_calls: int,
+                         search_fallbacks: int) -> dict:
     return {"question": question, "runtime": runtime_name,
             "summary": f"{len(killed)} refuted, {len(unverified)} unverified. No claims survived.", "findings": [],
             "refuted": _claim_status(killed), "unverified": _unverified_status(unverified),
             "sources": _sources(fetched_sources),
             "stats": _stats(runtime_name, angles, fetched_sources, all_claims, voted, [], killed, unverified, 0,
-                            dupes, len(voted) * VOTES_PER_CLAIM)}
+                            dupes, agent_calls, search_fallbacks)}
 
 
 def _salvage_result(question: str, runtime_name: str, angles: List[dict], fetched_sources: List[dict],
                     all_claims: List[dict], voted: List[dict], confirmed: List[dict], killed: List[dict],
-                    unverified: List[dict], dupes: List[dict]) -> dict:
+                    unverified: List[dict], dupes: List[dict], agent_calls: int,
+                    search_fallbacks: int) -> dict:
     return {"question": question, "runtime": runtime_name,
             "summary": f"Synthesis failed. {len(confirmed)} verified claims unmerged.", "findings": [],
             "confirmed": [{"claim": claim["claim"], "source": claim["sourceUrl"], "quote": claim["quote"],
@@ -549,4 +592,4 @@ def _salvage_result(question: str, runtime_name: str, angles: List[dict], fetche
             "refuted": _claim_status(killed), "unverified": _unverified_status(unverified),
             "sources": _sources(fetched_sources, include_angle=True),
             "stats": _stats(runtime_name, angles, fetched_sources, all_claims, voted, confirmed, killed, unverified,
-                            0, dupes, len(voted) * VOTES_PER_CLAIM)}
+                            0, dupes, agent_calls, search_fallbacks)}
