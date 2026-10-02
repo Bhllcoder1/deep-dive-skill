@@ -23,7 +23,7 @@ from urllib.parse import urlsplit
 from core.jsonparse import extract_json_object
 from core.logs import get_logger
 from core.parallel import run_bounded
-from core.safefetch import fetch_text_with_curl
+from core.safefetch import fetch_text_with_curl, secret_header_file
 from core.urlsafe import is_public_http_url
 from core.websearch import ddg_html_search_with_curl
 
@@ -163,20 +163,20 @@ class HermesRuntime(BaseRuntime):
                 json.dump(payload, payload_file, ensure_ascii=False)
                 payload_path = payload_file.name
 
-            result = subprocess.run(
-                [
-                    "curl", "-sS", "-L", "--connect-timeout", "10",
-                    "--max-time", str(self.API_TIMEOUT_SECONDS),
-                    "--write-out", "\n%{http_code}", endpoint,
-                    "-H", "Content-Type: application/json",
-                    "-H", f"Authorization: Bearer {self._api_key}",
-                    "-d", f"@{payload_path}",
-                ],
-                capture_output=True,
-                text=True,
-                errors="replace",
-                timeout=self.API_TIMEOUT_SECONDS + 5,
-            )
+            with secret_header_file({"Authorization": f"Bearer {self._api_key}",
+                                     "Content-Type": "application/json"}) as header_path:
+                result = subprocess.run(
+                    [
+                        "curl", "-sS", "--connect-timeout", "10",
+                        "--max-time", str(self.API_TIMEOUT_SECONDS),
+                        "--write-out", "\n%{http_code}",
+                        "-H", f"@{header_path}", "-d", f"@{payload_path}", "--", endpoint,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    errors="replace",
+                    timeout=self.API_TIMEOUT_SECONDS + 5,
+                )
             elapsed = time.monotonic() - start
             if result.returncode != 0:
                 self.log(f"{phase_str}{label_str}curl hatası: {self._short_error(result.stderr)}")

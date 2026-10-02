@@ -77,3 +77,10 @@ class DetectTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UnknownRuntimeWarningTests(unittest.TestCase):
+    def test_unknown_runtime_is_logged(self):
+        with self.assertLogs("deepdive.runtime", level="WARNING") as captured:
+            runtime.get_runtime("typo-runtime")
+        self.assertIn("typo-runtime", captured.output[0])

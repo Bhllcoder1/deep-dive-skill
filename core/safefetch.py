@@ -1,15 +1,37 @@
 """Shared safe page fetching: HTML-to-text and a redirect-checked, IP-pinned curl fetch."""
 
+import contextlib
 import html
+import os
 import re
 import subprocess
-from typing import Any, Callable, Optional
+import tempfile
+from typing import Any, Callable, Dict, Iterator, Optional
 from urllib.parse import urljoin, urlsplit
 
 from core.urlsafe import Resolver, normalize_public_url, resolve_public
 
 USER_AGENT = "DeepDive/1.0 (+https://github.com/Bhllcoder1/deep-dive-skill)"
 MAX_TEXT_CHARS = 15_000
+
+
+@contextlib.contextmanager
+def secret_header_file(headers: Dict[str, str]) -> Iterator[str]:
+    """Write headers (e.g. ``Authorization``) to a 0600 temp file for ``curl -H @file``.
+
+    Keeps credentials out of the process argument list, which any local user can read
+    with ``ps``."""
+    fd, path = tempfile.mkstemp(suffix=".hdr")  # mkstemp creates the file with mode 0600
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            for name, value in headers.items():
+                handle.write(f"{name}: {value}\n")
+        yield path
+    finally:
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass
 
 
 def html_to_text(content: Any, limit: int = MAX_TEXT_CHARS) -> str:

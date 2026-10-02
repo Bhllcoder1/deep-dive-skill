@@ -2,18 +2,19 @@
 
 import json
 import os
+import random
 import re
 import shutil
 import subprocess
 import tempfile
 import time
 import urllib.parse
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, List, Optional, Tuple
 
 from core.jsonparse import extract_json_object
 from core.logs import get_logger
 from core.parallel import run_bounded
-from core.safefetch import USER_AGENT as _USER_AGENT, fetch_text_with_curl, html_to_text
+from core.safefetch import USER_AGENT as _USER_AGENT, fetch_text_with_curl, html_to_text, secret_header_file
 from core.urlsafe import is_public_http_url, is_safe_to_connect
 from core.websearch import ddg_html_search_with_curl, parse_ddg_html
 
@@ -26,6 +27,10 @@ _FETCH_TIMEOUT = 30
 _MAX_FETCH_BYTES = 2_000_000
 _MAX_PARALLEL_WORKERS = 20
 _PARALLEL_TIMEOUT = 120
+_API_RETRIES = 2                      # extra attempts for transient failures
+_RETRY_BASE_S = 1.0
+_RETRY_CAP_S = 8.0
+_RETRYABLE_STATUS = {408, 409, 425, 429, 500, 502, 503, 504}
 
 
 _LOG = get_logger("runtime.generic")
@@ -149,16 +154,34 @@ class GenericRuntime(BaseRuntime):
             # json_object is supported by more OpenAI-compatible APIs than json_schema.
             payload["response_format"] = {"type": "json_object"}
 
-        result = self._requests_call(payload, schema) if self._has_requests else None
-        if result is None and self._curl_path:
-            result = self._curl_call(payload, schema)
+        result: Optional[dict] = None
+        for attempt in range(_API_RETRIES + 1):
+            result, retryable = self._post_once(payload, schema)
+            if result is not None or not retryable or attempt == _API_RETRIES:
+                break
+            delay = self._backoff(attempt)
+            _LOG.warning(f"  [generic] geçici hata; {delay:.1f}s sonra yeniden deneniyor ({attempt + 1}/{_API_RETRIES})")
+            time.sleep(delay)
 
         elapsed = time.monotonic() - start
         status = f"✓ {elapsed:.1f}s" if result is not None else f"❌ failed ({elapsed:.1f}s)"
         _LOG.info(f"  {phase_s}{label_s}{status}")
         return result
 
-    def _requests_call(self, payload: dict, schema: Optional[dict]) -> Optional[dict]:
+    @staticmethod
+    def _backoff(attempt: int) -> float:
+        """Exponential backoff with jitter: ~1s, ~2s, ... capped at _RETRY_CAP_S."""
+        return min(_RETRY_CAP_S, _RETRY_BASE_S * (2 ** attempt)) * (0.5 + random.random() / 2)
+
+    def _post_once(self, payload: dict, schema: Optional[dict]) -> Tuple[Optional[dict], bool]:
+        """One API attempt -> (result, retryable). curl is used only when requests is unavailable."""
+        if self._has_requests:
+            return self._requests_call(payload, schema)
+        if self._curl_path:
+            return self._curl_call(payload, schema)
+        return None, False
+
+    def _requests_call(self, payload: dict, schema: Optional[dict]) -> Tuple[Optional[dict], bool]:
         """Make the API request through requests, handling malformed API replies."""
         try:
             import requests
@@ -169,58 +192,67 @@ class GenericRuntime(BaseRuntime):
                 timeout=(_CONNECT_TIMEOUT, _API_TIMEOUT),
             )
         except requests.RequestException as exc:
-            _LOG.error(f"  [generic] requests error: {exc}")
-            return None
+            _LOG.error(f"  [generic] requests error: {type(exc).__name__}")
+            return None, True  # timeouts / connection resets are transient
         except Exception as exc:
-            _LOG.info(f"  [generic] requests başlatılamadı: {exc}")
-            return None
+            _LOG.error(f"  [generic] requests başlatılamadı: {type(exc).__name__}")
+            return None, False
 
         try:
             if not response.ok:
                 _LOG.error(f"  [generic] API hata {response.status_code}: {response.text[:200]}")
-                return None
-            return self._completion_json(response.json(), schema)
+                return None, response.status_code in _RETRYABLE_STATUS
+            result = self._completion_json(response.json(), schema)
+            return result, result is None  # unusable model output: one more sample may fix it
         except (ValueError, TypeError, KeyError, IndexError) as exc:
-            _LOG.info(f"  [generic] geçersiz API yanıtı: {exc}")
-            return None
+            _LOG.warning(f"  [generic] geçersiz API yanıtı: {exc}")
+            return None, True
         finally:
             response.close()
 
-    def _curl_call(self, payload: dict, schema: Optional[dict]) -> Optional[dict]:
-        """Make the API request through curl without shell interpolation."""
+    def _curl_call(self, payload: dict, schema: Optional[dict]) -> Tuple[Optional[dict], bool]:
+        """Make the API request through curl (no shell; credentials never appear in argv)."""
         if not self._curl_path:
-            return None
+            return None, False
         payload_path = None
         try:
             with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".json", delete=False) as handle:
                 json.dump(payload, handle)
                 payload_path = handle.name
-            result = subprocess.run(
-                [
-                    self._curl_path, "--silent", "--show-error", "--fail", "--request", "POST",
-                    "--connect-timeout", str(_CONNECT_TIMEOUT), "--max-time", str(_API_TIMEOUT),
-                    self._api_url, "-H", "Content-Type: application/json",
-                    "-H", f"Authorization: Bearer {self._api_key}",
-                    "--data-binary", f"@{payload_path}",
-                ],
-                capture_output=True, text=True, errors="replace", timeout=_API_TIMEOUT + _CONNECT_TIMEOUT + 5,
-            )
+            with secret_header_file({"Authorization": f"Bearer {self._api_key}",
+                                     "Content-Type": "application/json"}) as header_path:
+                result = subprocess.run(
+                    [
+                        self._curl_path, "--silent", "--show-error", "--request", "POST",
+                        "--connect-timeout", str(_CONNECT_TIMEOUT), "--max-time", str(_API_TIMEOUT),
+                        "-H", f"@{header_path}", "--data-binary", f"@{payload_path}",
+                        "-w", "\n%{http_code}", "--", self._api_url,
+                    ],
+                    capture_output=True, text=True, errors="replace", timeout=_API_TIMEOUT + _CONNECT_TIMEOUT + 5,
+                )
             if result.returncode != 0:
                 _LOG.error(f"  [generic] curl API hata: {result.stderr.strip()[:200]}")
-                return None
+                return None, True
+            body, _, code = result.stdout.rpartition("\n")
+            status = int(code) if code.isdigit() else 0
+            if not 200 <= status < 300:
+                _LOG.error(f"  [generic] API hata {status}: {body[:200]}")
+                return None, status in _RETRYABLE_STATUS
             try:
-                return self._completion_json(json.loads(result.stdout), schema)
+                parsed = self._completion_json(json.loads(body), schema)
+                return parsed, parsed is None
             except (json.JSONDecodeError, TypeError, KeyError, IndexError, ValueError) as exc:
-                _LOG.info(f"  [generic] curl geçersiz API yanıtı: {exc}")
+                _LOG.warning(f"  [generic] curl geçersiz API yanıtı: {exc}")
+                return None, True
         except (OSError, subprocess.TimeoutExpired) as exc:
-            _LOG.error(f"  [generic] curl error: {exc}")
+            _LOG.error(f"  [generic] curl error: {type(exc).__name__}")
+            return None, isinstance(exc, subprocess.TimeoutExpired)
         finally:
             if payload_path:
                 try:
                     os.unlink(payload_path)
                 except FileNotFoundError:
                     pass
-        return None
 
     def _completion_json(self, data: Any, schema: Optional[dict]) -> Optional[dict]:
         if not isinstance(data, dict):

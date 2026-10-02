@@ -18,6 +18,8 @@ import importlib
 import os
 from typing import Dict, List, Optional, Tuple, Type, Union
 
+from core.logs import get_logger
+
 from .base import BaseRuntime
 
 RuntimeTarget = Union[Type[BaseRuntime], str]
@@ -67,7 +69,11 @@ def get_runtime(runtime_name: Optional[str] = None) -> BaseRuntime:
 
     Unknown names fall back to the generic runtime."""
     name = runtime_name or detect()
-    target = _RUNTIME_REGISTRY.get(name) or _RUNTIME_REGISTRY["generic"]
+    target = _RUNTIME_REGISTRY.get(name)
+    if target is None:
+        get_logger("runtime").warning(
+            f"Unknown runtime {name!r} (registered: {', '.join(registered_names())}); using 'generic'.")
+        target = _RUNTIME_REGISTRY["generic"]
     return _load(target)()
 
 
