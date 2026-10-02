@@ -30,20 +30,25 @@ if [ -z "$1" ]; then
     python3 -m core.dashboard
 else
     # Pipeline + Panel
-    python3 -c "
+    # Soru kod olarak değil argv[1] olarak geçer (tırnak/enjeksiyon güvenli).
+    # `python3 -` KULLANILMAZ: stdin dashboard'un klavye girişine ayrılmıştır.
+    PANEL_CODE='
+import sys
+import threading
 from core.dashboard import Dashboard
 from harness import deep_research
-import threading, time
 
+question = sys.argv[1]
 dash = Dashboard()
-dash.subtitle = '$1'
+dash.subtitle = question[:60]
 
 def run_pipeline():
-    result = deep_research('$1', show_dashboard=False)
+    result = deep_research(question, show_dashboard=False)
     dash.pipeline.result = result
 
 t = threading.Thread(target=run_pipeline, daemon=True)
 t.start()
 dash.run()
-"
+'
+    python3 -c "$PANEL_CODE" "$1"
 fi
