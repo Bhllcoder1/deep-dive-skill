@@ -91,3 +91,21 @@ def fetch_text_with_curl(url: str, curl_path: str = "curl", *, user_agent: str =
             return None
         return html_to_text(body) or None
     return None
+
+
+def jina_reader_fetch(url: str, curl_path: str = "curl", *, runner: Callable[..., Any] = subprocess.run,
+                      max_bytes: int = 2_000_000) -> Optional[str]:
+    """Last-resort fetch through r.jina.ai (renders JS pages, returns markdown). Opt-in via
+    DR_FETCH_JINA=1 because the target URL is sent to a third party. Only public URLs are sent."""
+    from core.urlsafe import is_safe_to_connect, normalize_public_url
+    safe = normalize_public_url(url)
+    if not safe or not is_safe_to_connect(safe):
+        return None
+    try:
+        proc = runner([curl_path, "--silent", "--fail", "--connect-timeout", "5", "--max-time", "30",
+                       "--max-filesize", str(max_bytes), "--", "https://r.jina.ai/" + safe],
+                      capture_output=True, text=True, errors="replace", timeout=35)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    text = (proc.stdout or "").strip() if proc.returncode == 0 else ""
+    return text[:max_bytes] or None

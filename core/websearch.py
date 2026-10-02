@@ -27,6 +27,7 @@ from core.safefetch import USER_AGENT, secret_header_file
 from core.urlsafe import normalize_public_url
 
 _LOG = get_logger("websearch")
+BROWSER_UA = "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0"  # HTML engines reject bot UAs
 DDG_MIN_INTERVAL_S = 1.5
 DDG_BLOCK_SECONDS = 300
 _ddg_lock = threading.Lock()
@@ -85,7 +86,7 @@ def reset_ddg_state() -> None:
 
 
 def ddg_html_search_with_curl(query: str, max_results: int, curl_path: str = "curl", *,
-                              user_agent: str = USER_AGENT, runner: Callable[..., Any] = subprocess.run,
+                              user_agent: str = BROWSER_UA, runner: Callable[..., Any] = subprocess.run,
                               sleep: Callable[[float], None] = time.sleep) -> List[dict]:
     global _ddg_last, _ddg_blocked_until
     if ddg_blocked():
@@ -100,7 +101,7 @@ def ddg_html_search_with_curl(query: str, max_results: int, curl_path: str = "cu
             proc = runner(
                 [curl_path, "--silent", "--show-error", "--location", "--max-redirs", "3",
                  "--proto", "=http,https", "--connect-timeout", "5", "--max-time", "15",
-                 "-A", user_agent, "-w", "\n%{http_code}", "--", url],
+                 *_proxy_args(), "-A", user_agent, "-w", "\n%{http_code}", "--", url],
                 capture_output=True, text=True, errors="replace", timeout=20)
         except (OSError, subprocess.SubprocessError):
             return []
@@ -115,6 +116,12 @@ def ddg_html_search_with_curl(query: str, max_results: int, curl_path: str = "cu
     return parse_ddg_html(body, max_results)
 
 
+def _proxy_args() -> List[str]:
+    """curl --proxy args from DR_SEARCH_PROXY (e.g. socks5h://127.0.0.1:9050 for Tor); [] when unset/invalid."""
+    proxy = os.environ.get("DR_SEARCH_PROXY", "").strip()
+    return ["--proxy", proxy] if re.match(r"^(socks5h?|socks4a?|https?)://[\w.\-]+(:\d+)?/?$", proxy) else []
+
+
 def _curl_json(url: str, curl_path: str, headers: Optional[dict] = None,
                runner: Callable[..., Any] = subprocess.run) -> Optional[Any]:
     try:
@@ -125,6 +132,45 @@ def _curl_json(url: str, curl_path: str, headers: Optional[dict] = None,
         return json.loads(proc.stdout) if proc.returncode == 0 else None
     except (OSError, subprocess.SubprocessError, ValueError):
         return None
+
+
+def _curl_post_json(url: str, body: dict, headers: dict, curl_path: str = "curl",
+                    runner: Callable[..., Any] = subprocess.run) -> Optional[Any]:
+    """POST a JSON body (via stdin, never argv); credentials go in a 0600 header file."""
+    try:
+        with secret_header_file({"Content-Type": "application/json", **headers}) as header_path:
+            proc = runner([curl_path, "--silent", "--fail", "--connect-timeout", "5", "--max-time", "20",
+                           "--request", "POST", "-H", f"@{header_path}", "--data-binary", "@-", "--", url],
+                          input=json.dumps(body), capture_output=True, text=True, errors="replace", timeout=25)
+        return json.loads(proc.stdout) if proc.returncode == 0 else None
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+
+
+def tavily_search(query: str, max_results: int, curl_path: str = "curl",
+                  runner: Callable[..., Any] = subprocess.run) -> List[dict]:
+    """Tavily (free tier ~1000/month); needs TAVILY_API_KEY."""
+    key = os.environ.get("TAVILY_API_KEY", "").strip()
+    if not key:
+        return []
+    data = _curl_post_json("https://api.tavily.com/search", {"query": query, "max_results": min(max_results, 20)},
+                           {"Authorization": f"Bearer {key}"}, curl_path, runner)
+    items = data.get("results") if isinstance(data, dict) else None
+    out = (_result(i.get("url"), i.get("title"), i.get("content")) for i in items or [] if isinstance(i, dict))
+    return [r for r in out if r][:max_results]
+
+
+def serper_search(query: str, max_results: int, curl_path: str = "curl",
+                  runner: Callable[..., Any] = subprocess.run) -> List[dict]:
+    """Serper.dev Google results (free signup credits); needs SERPER_API_KEY."""
+    key = os.environ.get("SERPER_API_KEY", "").strip()
+    if not key:
+        return []
+    data = _curl_post_json("https://google.serper.dev/search", {"q": query, "num": min(max_results, 20)},
+                           {"X-API-KEY": key}, curl_path, runner)
+    items = data.get("organic") if isinstance(data, dict) else None
+    out = (_result(i.get("link"), i.get("title"), i.get("snippet")) for i in items or [] if isinstance(i, dict))
+    return [r for r in out if r][:max_results]
 
 
 def _result(url: Any, title: Any, snippet: Any, relevance: str = "medium") -> Optional[dict]:
@@ -211,8 +257,8 @@ def bing_search(query: str, max_results: int, curl_path: str = "curl", *,
     url = "https://www.bing.com/search?" + urllib.parse.urlencode({"q": query, "setlang": "en"})
     try:
         proc = runner([curl_path, "--silent", "--location", "--max-redirs", "3", "--proto", "=http,https",
-                       "--connect-timeout", "5", "--max-time", "15", "-A",
-                       "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
+                       "--connect-timeout", "5", "--max-time", "15", *_proxy_args(), "-A",
+                       BROWSER_UA,
                        "-H", "Accept-Language: en", "--", url],
                       capture_output=True, text=True, errors="replace", timeout=20)
     except (OSError, subprocess.SubprocessError):
@@ -221,15 +267,21 @@ def bing_search(query: str, max_results: int, curl_path: str = "curl", *,
 
 
 def web_search_chain(query: str, max_results: int, curl_path: str = "curl", *,
-                     user_agent: str = USER_AGENT, runner: Callable[..., Any] = subprocess.run) -> List[dict]:
-    """Brave (if keyed) → Bing → Wikipedia (→ DuckDuckGo if DR_SEARCH_DDG=1); first non-empty wins,
+                     user_agent: str = BROWSER_UA, runner: Callable[..., Any] = subprocess.run) -> List[dict]:
+    """Tavily / Serper / Brave (whichever is keyed) → [DuckDuckGo if DR_SEARCH_PROXY] → Bing → Wikipedia (→ DDG if DR_SEARCH_DDG=1); first non-empty wins,
     then thin lists are topped up from the keyless vertical APIs (core.searchapis)."""
-    backends = [lambda: brave_search(query, max_results, curl_path, runner),
-                lambda: bing_search(query, max_results, curl_path, runner=runner),
-                lambda: wikipedia_search(query, max_results, curl_path, runner)]
-    if os.environ.get("DR_SEARCH_DDG") == "1":
-        backends.append(lambda: ddg_html_search_with_curl(query, max_results, curl_path,
-                                                          user_agent=user_agent, runner=runner))
+    ddg = lambda: ddg_html_search_with_curl(query, max_results, curl_path, user_agent=user_agent, runner=runner)
+    backends = [lambda: tavily_search(query, max_results, curl_path, runner),
+                lambda: serper_search(query, max_results, curl_path, runner),
+                lambda: brave_search(query, max_results, curl_path, runner)]
+    # DuckDuckGo bot-challenges a plain IP, but works through a proxy (e.g. Tor): then it goes first.
+    via_proxy = bool(_proxy_args())
+    if via_proxy:
+        backends.append(ddg)
+    backends += [lambda: bing_search(query, max_results, curl_path, runner=runner),
+                 lambda: wikipedia_search(query, max_results, curl_path, runner)]
+    if not via_proxy and os.environ.get("DR_SEARCH_DDG") == "1":
+        backends.append(ddg)
     from core.searchapis import top_up  # late import: searchapis builds on this module's helpers
     results: List[dict] = []
     for backend in backends:

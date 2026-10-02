@@ -14,7 +14,8 @@ from typing import Any, Callable, List, Optional, Tuple
 from core.jsonparse import extract_json_object
 from core.logs import get_logger
 from core.parallel import run_bounded
-from core.safefetch import USER_AGENT as _USER_AGENT, fetch_text_with_curl, html_to_text, secret_header_file
+from core.safefetch import (USER_AGENT as _USER_AGENT, fetch_text_with_curl, html_to_text,
+                           jina_reader_fetch, secret_header_file)
 from core.urlsafe import is_public_http_url, is_safe_to_connect
 from core.websearch import parse_bing_html, web_search_chain
 
@@ -390,7 +391,11 @@ class GenericRuntime(BaseRuntime):
             fetched = self._requests_fetch(url)
             if fetched is not None:
                 return fetched
-        return self._curl_fetch(url)
+        fetched = self._curl_fetch(url)
+        if not fetched and self._curl_path and os.environ.get("DR_FETCH_JINA") == "1":
+            self.log("doğrudan fetch boş döndü; r.jina.ai yedeği kullanılıyor")
+            return jina_reader_fetch(url, self._curl_path)
+        return fetched
 
     def _requests_fetch(self, url: str) -> Optional[str]:
         try:

@@ -20,7 +20,7 @@ outgoing:
 # Engines that rate-limit / captcha this IP are disabled; bing + google + stackoverflow + github work.
 engines:
   - name: duckduckgo
-    disabled: true
+    disabled: true  # bot-challenges SearXNG even through Tor; deep-dive's own chain uses DR_SEARCH_PROXY instead
   - name: brave
     disabled: true
   - name: startpage

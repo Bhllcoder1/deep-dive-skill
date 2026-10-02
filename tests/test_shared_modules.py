@@ -354,3 +354,66 @@ class BingAndChainOrderTests(unittest.TestCase):
             websearch.web_search_chain("q", 5, runner=runner)
         self.assertTrue(any("duckduckgo" in u for u in urls))
         self.assertIn("duckduckgo", urls[-1])
+
+
+class ProxyTests(unittest.TestCase):
+    def test_proxy_arg_validation(self):
+        from core import websearch
+        for value, expected in [("socks5h://127.0.0.1:9050", ["--proxy", "socks5h://127.0.0.1:9050"]),
+                                ("", []), ("file:///etc/passwd", []), ("socks5h://x; rm -rf /", [])]:
+            with mock.patch.dict(os.environ, {"DR_SEARCH_PROXY": value}):
+                self.assertEqual(websearch._proxy_args(), expected)
+
+    def test_proxy_puts_ddg_first_and_is_passed_to_curl(self):
+        from core import websearch
+        seen = []
+
+        def run(cmd, **kwargs):
+            seen.append(cmd)
+            page = '<a class="result__a" href="https://example.org/x">T</a>'
+            return subprocess.CompletedProcess(cmd, 0, stdout=page + "\n200", stderr="")
+        websearch.reset_ddg_state()
+        with mock.patch.dict(os.environ, {"DR_SEARCH_PROXY": "socks5h://127.0.0.1:9050", "DR_SEARCH_VERTICALS": ""}, clear=True), \
+                mock.patch.object(websearch.time, "sleep"):
+            out = websearch.web_search_chain("q", 3, runner=run)
+        websearch.reset_ddg_state()
+        self.assertEqual(out[0]["url"], "https://example.org/x")
+        self.assertEqual(len(seen), 1)
+        self.assertIn("duckduckgo", seen[0][-1])
+        self.assertIn("--proxy", seen[0])
+
+
+class KeyedBackendTests(unittest.TestCase):
+    def _run(self, payload):
+        calls = []
+
+        def run(cmd, **kwargs):
+            calls.append((cmd, kwargs))
+            return subprocess.CompletedProcess(cmd, 0, stdout=__import__("json").dumps(payload), stderr="")
+        return run, calls
+
+    def test_tavily_and_serper_parse_and_keep_keys_out_of_argv(self):
+        from core import websearch
+        run, calls = self._run({"results": [{"url": "https://t.example/a", "title": "T", "content": "c"}]})
+        with mock.patch.dict(os.environ, {"TAVILY_API_KEY": "tvly-secret-123"}):
+            out = websearch.tavily_search("q", 3, runner=run)
+        self.assertEqual(out[0]["url"], "https://t.example/a")
+        self.assertNotIn("tvly-secret-123", " ".join(calls[0][0]))
+        self.assertIn('"query": "q"', calls[0][1]["input"])
+        run, calls = self._run({"organic": [{"link": "https://s.example/b", "title": "S", "snippet": "x"}]})
+        with mock.patch.dict(os.environ, {"SERPER_API_KEY": "serper-secret-123"}):
+            self.assertEqual(websearch.serper_search("q", 3, runner=run)[0]["url"], "https://s.example/b")
+        self.assertNotIn("serper-secret-123", " ".join(calls[0][0]))
+
+    def test_unkeyed_backends_make_no_request(self):
+        from core import websearch
+        boom = mock.Mock(side_effect=AssertionError("no request without a key"))
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(websearch.tavily_search("q", 3, runner=boom), [])
+            self.assertEqual(websearch.serper_search("q", 3, runner=boom), [])
+
+    def test_jina_fetch_refuses_private_urls_and_is_opt_in_text(self):
+        from core.safefetch import jina_reader_fetch
+        boom = mock.Mock(side_effect=AssertionError("must not call"))
+        self.assertIsNone(jina_reader_fetch("http://127.0.0.1/x", runner=boom))
+        self.assertIsNone(jina_reader_fetch("file:///etc/passwd", runner=boom))
