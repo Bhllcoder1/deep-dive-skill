@@ -8,7 +8,7 @@ from unittest import mock
 
 from core import logs
 from core.config import Config
-from tests.fakes import simple_runtime
+
 
 U1 = "https://one.example/a"
 

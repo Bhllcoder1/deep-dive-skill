@@ -13,7 +13,6 @@ import os
 import re
 import sys
 import time
-from typing import Optional
 
 ROOT = "deepdive"
 _SECRETS = [
@@ -63,6 +62,3 @@ def ensure_configured(stream=None) -> None:
     logger.setLevel(level if level in {"DEBUG", "INFO", "WARNING", "ERROR"} else "INFO")
     logger.propagate = False
 
-
-def run_adapter(logger: logging.Logger, run_id: Optional[str]) -> logging.LoggerAdapter:
-    return logging.LoggerAdapter(logger, {"run_id": run_id or "-"})

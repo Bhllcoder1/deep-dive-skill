@@ -20,6 +20,7 @@ from core.urlsafe import is_public_http_url
 from core.websearch import ddg_html_search_with_curl
 
 from .base import BaseRuntime
+from .generic import GenericRuntime
 
 
 _MARKER_TYPES = {"AGENT", "WebSearch", "WebFetch", "PARALLEL"}
@@ -118,10 +119,13 @@ class ClaudeCodeRuntime(BaseRuntime):
         if schema:
             payload["response_format"] = {"type": "json_object"}
 
-        api_base = os.environ.get("LLM_API_BASE", "https://api.deepseek.com").rstrip("/")
+        endpoint = GenericRuntime._api_endpoint()  # validated http(s) URL, same default as every runtime
+        if not endpoint:
+            self.log("agent fallback unavailable: LLM_API_BASE is not a valid http(s) URL")
+            return None
         try:
             response = requests.post(
-                f"{api_base}/chat/completions",
+                endpoint,
                 headers={"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json"},
                 json=payload,
                 timeout=60,

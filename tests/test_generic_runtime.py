@@ -166,3 +166,16 @@ class SecretHandlingTests(unittest.TestCase):
         with secret_header_file({"Authorization": "Bearer x"}) as path:
             self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
         self.assertFalse(os.path.exists(path))
+
+
+class ClaudeCodeFallbackEndpointTests(unittest.TestCase):
+    def test_invalid_llm_api_base_is_rejected_before_any_request(self):
+        from runtime.claude_code import ClaudeCodeRuntime
+        rt = ClaudeCodeRuntime()
+        rt._api_key = "sk-test-key-123456"
+        rt.log = mock.Mock()
+        with mock.patch.dict(os.environ, {"LLM_API_BASE": "file:///etc/passwd"}), \
+                mock.patch("requests.post") as post:
+            self.assertIsNone(rt._generic_agent_call("p", None))
+        post.assert_not_called()
+        self.assertTrue(any("LLM_API_BASE" in call.args[0] for call in rt.log.call_args_list))

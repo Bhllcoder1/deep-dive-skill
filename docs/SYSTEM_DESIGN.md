@@ -1,9 +1,9 @@
 # Sistem Tasarımı Değerlendirmesi — deep-dive-skill
 
 Kapsam: `feat/architecture-review` dalı. **Baseline** = `d20e154` (dal öncesi), **güncel** = HEAD
-(`2e4ca93 … 51ec850`, 11 commit). Baseline referansları `git show d20e154:<dosya>` ile, güncel
+(`2e4ca93 … HEAD`; son güncelleme sonrası düzeltmeler 038998d ve sonrasında). Baseline referansları `git show d20e154:<dosya>` ile, güncel
 referanslar çalışma ağacında `grep -n` / `sed -n` ile doğrulanmıştır. Test paketi HEAD'de
-`python3 -m unittest discover -s tests -t .` → **118 test, OK**.
+`python3 -m unittest discover -s tests -t .` → **122 test, OK**.
 
 Derecelendirme: ✅ uyuyor · ⚠ kısmen · ❌ uymuyor
 
@@ -119,7 +119,7 @@ Diğer farklar: retry yalnızca Generic'te (`runtime/generic.py:158-164`); Herme
 | API anahtarı bulma (`~/.env`) | 2 kopya | hâlâ 2: `runtime/generic.py:99-109`, `runtime/hermes.py:67-109` | önerilen, uygulanmadı |
 | KISS: konfigürasyon | `os.environ` yazma + `importlib.reload` + `RLock` (`d20e154:harness.py:31`, `:90`, `:191`, `:222`) | `Config.resolve()` (`harness.py:114`) | uygulandı (9693fc3) |
 | YAGNI: ölü modüller | `core/agent.py` (334), `core/web.py` (492) hiçbir yerden içe aktarılmıyordu | silindi | uygulandı (b92c8ce) |
-| YAGNI: kalanlar | — | `PipelineMonitor` (`core/monitor.py:326`) kullanılmıyor (yalnızca `ModelConfig`, `core/dashboard.py:336`); `parallel()`/`pipeline()`/`_detect_capability` (`core/parallel.py:24-91`) hiçbir yerden çağrılmıyor; `RuntimeCapabilities` (bkz. 2.4); `logs.run_adapter` (`core/logs.py:67`) kullanılmıyor; `runtime._dashboard` atanıyor ama okunmuyor (`harness.py:69`) | önerilen, uygulanmadı |
+| YAGNI: kalanlar | — | `PipelineMonitor` (`core/monitor.py:326`) kullanılmıyor (yalnızca `ModelConfig`, `core/dashboard.py:336`); `parallel()`/`pipeline()`/`_detect_capability` (`core/parallel.py:24-91`) hiçbir yerden çağrılmıyor; `RuntimeCapabilities` (bkz. 2.4); `logs.run_adapter` ve `runtime._dashboard` ataması kaldırıldı (bu son düzeltme) | kalanlar için önerilen, uygulanmadı |
 
 **Etki:** LLM çağrısının 3 kopyası, retry/TLS/timeout politikasının adaptörlere göre ayrışmasının (bkz. 2.3, 2.9) kök nedeni.
 
@@ -168,7 +168,7 @@ harness.py (CLI/API, rapor çıktısı)
 | Rate limiting | yok | **yok** — DDG HTML ve LLM API'ye `max_workers` kadar eşzamanlı istek | — | önerilen, uygulanmadı |
 | Circuit breaker | yok | **yok** — API çökmüşken her çağrı 3 deneme × backoff harcar | — | önerilen, uygulanmadı |
 
-**Ek bulgu (açık):** CLI bulunduğunda `CliRuntime.setup()` API anahtarı/URL'si olmadan `_ready = True` yapıyor (`runtime/cli.py:82-86`). CLI başarısız olunca Generic'e düşülüyor (`:98`); `_api_url` boş olduğu için `requests` `MissingSchema` fırlatıyor, bu da "geçici" sayılıp (`runtime/generic.py:194-196`) iki kez backoff ile yeniden deneniyor (yerelde doğrulandı: `_post_once` → `(None, True)`). Sonuç doğru (`None`) ama her başarısız CLI çağrısı ~1,5–4,5 s boşa bekliyor.
+**Ek bulgu (düzeltildi — uygulandı, commit 038998d):** CLI bulunduğunda `CliRuntime.setup()` API anahtarı/URL'sini yüklemiyordu; CLI başarısız olunca Generic yedeği `_api_url` boş olduğu için `MissingSchema` alıp "geçici" sayarak boşuna backoff yapıyordu (ve anahtar tanımlı olsa bile yedek hiç çalışmıyordu). Artık `CliRuntime.setup()` `_load_api_config()` çağırır ve `GenericRuntime.agent_call` API yapılandırılmamışsa retry'sız hemen `None` döner (`tests/test_cli_runtime.py::CliFallbackConfigTests`).
 
 **Neden uygulanmadı:** Cache/rate limit/circuit breaker yeni durum ve konfigürasyon yüzeyi getirir (kapsam); Hermes/Claude Code retry'ı bunların ağ yollarını değiştirir (davranış riski).
 
@@ -225,7 +225,7 @@ harness.py (CLI/API, rapor çıktısı)
 **Güncel:** Başlıklar 0600 geçici dosyada, `curl -H @file` (`core/safefetch.py:18-34`; kullanım `runtime/generic.py:222-228`, `runtime/hermes.py:166-173`) — **uygulandı (51ec850)**. Log redaksiyonu (Bearer, `sk-…`, `api_key=`, query token'ları) `core/logs.py:19-31`, formatter `:34-47` — **uygulandı (551a583)**. Hata log'ları istisna metni yerine tür adını yazar (`runtime/generic.py:195`).
 
 **Açık kalan:**
-- LLM API anahtarı yapılandırılan her `LLM_API_BASE`'e gönderiliyor; `http://` kabul ediliyor (`runtime/generic.py:116`, `runtime/hermes.py:122`), Claude Code yedeği URL'yi hiç doğrulamıyor (`runtime/claude_code.py:121`) → TLS zorunlu değil.
+- LLM API anahtarı yapılandırılan her `LLM_API_BASE`'e gönderiliyor; `http://` (loopback dışı) kabul ediliyor — Generic artık bunu **uyarı olarak loglar** (`_load_api_config`, 038998d), Claude Code yedeği artık aynı doğrulanmış uç noktayı kullanır (`GenericRuntime._api_endpoint()`); Hermes ayrı `_chat_endpoint` kullanıyor (`runtime/hermes.py:122`). TLS **zorlaması yok**.
 - Redaksiyon yalnızca `ensure_configured()`'ın kurduğu handler'da; uygulama `deepdive` logger'ını kendisi yapılandırmışsa devre dışı (`core/logs.py:57-58`).
 
 **Öneri:** `http://` yalnızca loopback için (ya da `DR_ALLOW_INSECURE_LLM=1` ile) izinli olsun; redaksiyonu handler yerine `logging.Filter` olarak logger'a eklemek.
@@ -238,7 +238,7 @@ harness.py (CLI/API, rapor çıktısı)
 
 **Güncel (commit 551a583):** Tek `deepdive` logger ağacı, yalnızca stderr, `DR_LOG_LEVEL`, `DR_LOG_FORMAT=json` (`ts`, `level`, `logger`, `run_id`) (`core/logs.py:1-64`); `run_id` her sonuca girer (`core/results.py:33`) ve runtime log'larına taşınır (`core/engine.py:39`, `runtime/base.py:208-217`); faz süreleri `stats.phaseSeconds` (`core/results.py:39`, `core/context.py:35-42`); `searchFallbacks`, `agentCalls` sayaçları (`core/results.py:38`). `harness.print_report` (`harness.py:152-231`) kasıtlı olarak stdout'a yazar (rapor çıktısı); JSON modunda ilerleme stderr'e yönlendirilir (`harness.py:287-289`).
 
-**Açık kalan:** `core/parallel.py:51`, `:82`, `:146-147` hâlâ `print` kullanıyor (redaksiyonsuz; `:146` istisna metnini yazar); Claude Code köprü işaretleri bilinçli `print` (`runtime/claude_code.py:66`). Metrik uç noktası (Prometheus/OTel), tracing span'leri, çağrı başına gecikme histogramı ve token/maliyet ölçümü yok.
+**Açık kalan:** `core/parallel.py` artık logger kullanıyor (istisna metni yerine tür adı; traceback yalnız DEBUG); `print` olarak kalan tek yer bilinçli: köprü işaretleri (`runtime/claude_code.py:66`, `core/parallel.py` `__CLAUDE_PARALLEL__`). Metrik uç noktası (Prometheus/OTel), tracing span'leri, çağrı başına gecikme histogramı ve token/maliyet ölçümü yok.
 
 **Öneri:** `core/parallel.py`'yi logger'a geçirmek; faz/agent çağrısı başına OpenTelemetry span'i (isteğe bağlı bağımlılık).
 
@@ -248,7 +248,7 @@ harness.py (CLI/API, rapor çıktısı)
 
 **Baseline:** Test paketi ve CI yoktu (`tests/` ve `.github/workflows/ci.yml` 2e4ca93'te eklendi).
 
-**Güncel:** `tests/fakes.py:24` `FakeRuntime` (betikli arama/sayfa/çıkarım/oy/sentez); 10 test modülü, 118 test (motor, config/pipeline, harness, CLI runtime, generic runtime, kayıt defteri, paylaşılan modüller, log, dashboard, panel.sh). Enjeksiyon noktaları: `Config`, `runtime=` parametresi (`core/engine.py:22`), `resolver`/`runner` parametreleri (`core/urlsafe.py:77`, `core/safefetch.py:50-51`), `register()` (`runtime/__init__.py:32`).
+**Güncel:** `tests/fakes.py:24` `FakeRuntime` (betikli arama/sayfa/çıkarım/oy/sentez); 11 test modülü, 122 test (motor, config/pipeline, harness, CLI runtime, generic runtime, kayıt defteri, paylaşılan modüller, log, dashboard, panel.sh). Enjeksiyon noktaları: `Config`, `runtime=` parametresi (`core/engine.py:22`), `resolver`/`runner` parametreleri (`core/urlsafe.py:77`, `core/safefetch.py:50-51`), `register()` (`runtime/__init__.py:32`).
 
 **Açık kalan:** Hermes ve Claude Code runtime'ları için ayrı birim testi yok (`ls tests/` → `test_hermes*`, `test_claude_code*` yok); `core/monitor.py` (738 satır) testsiz.
 
@@ -261,19 +261,19 @@ harness.py (CLI/API, rapor çıktısı)
 | Öncelik | Konu | Kanıt | Risk |
 |:---:|---|---|---|
 | P1 | Generic `requests` fetch yolunda DNS rebinding / TOCTOU | `runtime/generic.py:409`, `:423`, `:431` | SSRF ile iç ağ erişimi |
-| P1 | LLM API anahtarı TLS'siz uç noktaya gidebilir; Claude Code yedeği URL'yi doğrulamıyor | `runtime/generic.py:116`, `runtime/hermes.py:122`, `runtime/claude_code.py:121` | Anahtar sızıntısı |
+| P1 | LLM API anahtarı `http://` (loopback dışı) uç noktaya gidebilir — **yalnızca uyarı loglanıyor**, zorlama yok. (Claude Code yedeği artık `LLM_API_BASE`'i doğruluyor: uygulandı.) | `runtime/generic.py` `_load_api_config`, `runtime/hermes.py:122` | Anahtar sızıntısı |
 | P1 | Doğrulayıcılar kaynak metni görmüyor; sentezde çitsiz web metni | `core/prompts.py:52-63`, `:74-79`, `:43` | Doğrulama kalitesi, prompt injection |
 | P2 | Rate limiting ve circuit breaker yok | — (Generic retry `runtime/generic.py:158-164` her çağrıda tekrar dener) | DDG engeli, API kotası tükenmesi |
 | P2 | Retry yalnızca Generic'te; Claude Code'da toplu timeout yok | `runtime/hermes.py:126-234`, `runtime/claude_code.py:191-194` | Tutarsız dayanıklılık |
-| P2 | CLI başarısız → boş URL ile Generic'e düşüş, "geçici" sayılıp yeniden deneme | `runtime/cli.py:82-86`, `runtime/generic.py:194-196` | Boşa bekleme |
+| ✓ | ~~CLI başarısız → boş URL ile Generic'e düşüş, yeniden deneme~~ | uygulandı (038998d) | — |
 | P2 | `run_parallel` sözleşmesi adaptörler arasında farklı (LSP) | `runtime/generic.py:463-468`, `runtime/hermes.py:283-288`, `runtime/claude_code.py:178-185` | Doğrudan kullanımda sürpriz |
 | P2 | `core` ↔ `runtime` paket döngüsü | `core/engine.py:17`, `runtime/generic.py:14-19`, `core/__init__.py:13-31` | İçe aktarma kırılganlığı |
 | P3 | Faz bütçesi kooperatif; iptal yok; timeout'lu işler arka planda sürer | `core/context.py:94`, `core/parallel.py:126` | Süre/kota aşımı |
 | P3 | İdempotency / yanıt önbelleği yok | — | Tekrarlı maliyet |
 | P3 | LLM HTTP çağrısı 3 kopya; `~/.env` okuma 2 kopya (DRY) | `runtime/generic.py:144-155`, `runtime/hermes.py:149-159`, `runtime/claude_code.py:109-119` | Politika sapması |
-| P3 | Ölü/kullanılmayan: `PipelineMonitor`, `RuntimeCapabilities`/`describe`, `parallel()`/`pipeline()`, `logs.run_adapter`, `runtime._dashboard` | `core/monitor.py:326`, `runtime/base.py:54-158`, `core/parallel.py:24-91`, `core/logs.py:67`, `harness.py:69` | Bakım yükü (YAGNI) |
+| P3 | Ölü/kullanılmayan: `PipelineMonitor`, `RuntimeCapabilities`/`describe`, `parallel()`/`pipeline()` | `core/monitor.py:326`, `runtime/base.py:54-158`, `core/parallel.py:24-91` | Bakım yükü (YAGNI) |
 | P3 | `run_id` runtime örneğinde paylaşılıyor | `core/engine.py:39` | Eşzamanlı çalıştırmada log karışması |
-| P3 | `core/parallel.py` hâlâ `print` ile log; metrik/tracing yok | `core/parallel.py:51`, `:82`, `:146-147` | Gözlemlenebilirlik açığı |
+| P3 | Metrik/tracing yok (`core/parallel.py` log'ları logger'a taşındı) | — | Gözlemlenebilirlik açığı |
 | P3 | Claude Code köprüsü yalnızca istek gönderiyor, yanıt kanalı yok | `runtime/claude_code.py:93-95` | "Native" mod fiilen DeepSeek yedeği |
 
 ---
@@ -328,6 +328,6 @@ paylaşılan yardımcılar (bugün core/ altında):
 6. **Disk üzerinde yanıt önbelleği:** `(url, prompt hash)` anahtarlı, TTL'li; tekrar çalıştırmada idempotency ve maliyet düşüşü.
 7. **`RuntimeCapabilities`'i kaldırmak ya da kullanmak:** ör. `max_parallel_agents` → `max_workers` tavanı, `has_builtin_web_search` → arama stratejisi seçimi; `run_parallel`'ı `BaseRuntime`'da somut varsayılan yapmak.
 8. **`core/monitor.py` `PipelineMonitor`'ü bağlamak veya silmek:** yalnızca `ModelConfig` kullanılıyor (`core/dashboard.py:336`).
-9. **Tek `LlmClient`:** retry/backoff, TLS politikası ve uç nokta normalizasyonu tek yerde; Hermes ve Claude Code yedeği bunu kullanır; `CliRuntime` yedeği API anahtarı yoksa denemeden `None` döner.
+9. **Tek `LlmClient`:** retry/backoff, TLS politikası (http:// zorlaması) ve uç nokta normalizasyonu tek yerde; Hermes ve Claude Code yedeği bunu kullanır. (`CliRuntime` yedeğinin anahtarsız hızlı `None` dönmesi uygulandı: 038998d.)
 10. **Claude Code köprüsü yalnızca istek gönderiyor** (`runtime/claude_code.py:93-95`): ya JS wrapper'dan yanıt kanalı (ör. stdin/FIFO üzerinden JSON) eklenmeli ya da "native" iddiası belgelerden kaldırılmalı.
-11. **Gözlemlenebilirlik:** `core/parallel.py` `print`'lerini logger'a taşımak; isteğe bağlı OpenTelemetry span'leri ve token/maliyet metrikleri; `run_id`'yi runtime örneği yerine çağrı bağlamıyla taşımak.
+11. **Gözlemlenebilirlik:** isteğe bağlı OpenTelemetry span'leri ve token/maliyet metrikleri; `run_id`'yi runtime örneği yerine çağrı bağlamıyla taşımak.

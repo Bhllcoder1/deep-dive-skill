@@ -16,9 +16,12 @@ Usage:
 
 import os
 import sys
-import traceback
 from concurrent.futures import ThreadPoolExecutor, wait
 from typing import Any, Callable, List, Optional
+
+from core.logs import get_logger
+
+_LOG = get_logger("parallel")
 
 
 def _detect_capability() -> str:
@@ -48,7 +51,7 @@ def pipeline(items: List[Any], fn: Callable[[Any], Any]) -> List[Any]:
     results = []
     total = len(items)
     for i, item in enumerate(items):
-        print(f"  pipeline: {i+1}/{total}", file=sys.stderr)
+        _LOG.info(f"  pipeline: {i+1}/{total}")
         try:
             result = fn(item)
             results.append(result)
@@ -143,5 +146,5 @@ def _validate_max_workers(max_workers: int) -> None:
 
 def _log_failure(operation: str, index: int, exc: BaseException) -> None:
     """Report an isolated task failure without interrupting sibling tasks."""
-    print(f"  {operation} {index} error: {type(exc).__name__}: {exc}", file=sys.stderr)
-    traceback.print_exception(type(exc), exc, exc.__traceback__, file=sys.stderr)
+    _LOG.error(f"  {operation} {index} error: {type(exc).__name__}")
+    _LOG.debug("traceback", exc_info=(type(exc), exc, exc.__traceback__))

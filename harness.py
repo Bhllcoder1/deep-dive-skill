@@ -66,7 +66,6 @@ def _start_dashboard(question: str, config: Config, runtime: Any) -> tuple[Any, 
         return None, None, None
     try:
         dashboard = _configure_dashboard(question, config)
-        runtime._dashboard = dashboard
         stop_event = threading.Event()
 
         def render_loop() -> None:
