@@ -1,6 +1,9 @@
 """Test doubles: a scripted runtime that needs no network and no API key."""
 
 import re
+import sys
+import types
+from unittest import mock
 
 from core import engine
 from core.config import Config
@@ -127,3 +130,14 @@ def simple_runtime(claims_by_url, **kwargs):
         for url, claims in claims_by_url.items()
     }
     return FakeRuntime(search=search, pages=pages, extractions=extractions, **kwargs)
+
+
+def fake_requests():
+    """Context manager installing a stand-in ``requests`` module.
+
+    The project's zero-dependency rule means CI has no ``requests``; tests must not need it."""
+    module = types.ModuleType("requests")
+    module.RequestException = type("RequestException", (Exception,), {})
+    module.post = mock.Mock(name="requests.post")
+    module.get = mock.Mock(name="requests.get")
+    return mock.patch.dict(sys.modules, {"requests": module}), module

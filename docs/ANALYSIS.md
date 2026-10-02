@@ -4,7 +4,7 @@
 
 **Satır referansları:** Aksi belirtilmedikçe tüm `dosya:satır` referansları **başlangıç commit'indeki (`d20e154`)** dosyalara aittir; `git show d20e154:<dosya>` ile görülebilir. Her referans okunarak doğrulanmıştır; kesin doğrulanamayanlar **doğrulanamadı** olarak işaretlidir. "Durum" sütunundaki commit'ler bu daldaki (`feat/architecture-review`) düzeltmelerdir.
 
-**Yöntem:** Statik okuma + grep + ağsız çalıştırma (N1, N2, F10 kod değiştirilmeden çalıştırılarak kanıtlandı). Analiz Opus ile yürütüldü; düzeltmeler ve doğrulama testleri ayrı yapıldı (`tests/`, 118 test).
+**Yöntem:** Statik okuma + grep + ağsız çalıştırma (N1, N2, F10 kod değiştirilmeden çalıştırılarak kanıtlandı). Analiz Opus ile yürütüldü; düzeltmeler ve doğrulama testleri ayrı yapıldı (`tests/`, 122 test).
 
 ## 1. Modül sorumlulukları ve bağımlılıklar (başlangıç durumu)
 
@@ -107,7 +107,7 @@
 
 | ID | Eksik | Durum |
 |---|---|---|
-| E1 | Test/CI yoktu | `2e4ca93` (118 test, 3.9 + 3.12 CI) |
+| E1 | Test/CI yoktu | `2e4ca93` (122 test, 3.9 + 3.12 CI) |
 | E2 | Yapılandırılmış logging yoktu | `551a583` |
 | E3 | DNS-sonrası IP ve hop başına doğrulama yoktu | `adc74ad` |
 | E4 | Alıntı-içerik eşleşmesi yoktu | `9693fc3` (bayrak olarak) |

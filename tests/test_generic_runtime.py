@@ -7,6 +7,7 @@ import unittest
 from unittest import mock
 
 from runtime.generic import GenericRuntime
+from tests.fakes import fake_requests
 
 
 class _Done:
@@ -49,7 +50,9 @@ class WebFetchGuardTests(unittest.TestCase):
     def test_private_and_rebound_hosts_are_not_fetched(self):
         rt = GenericRuntime()
         rt._has_requests = True
-        with mock.patch("requests.get") as get:
+        patcher, fake = fake_requests()
+        get = fake.get
+        with patcher:
             self.assertIsNone(rt.web_fetch("http://127.0.0.1/"))
             self.assertIsNone(rt.web_fetch("http://169.254.169.254/latest"))
             with mock.patch("core.urlsafe.socket.getaddrinfo", return_value=[(0, 0, 0, "", ("10.0.0.5", 0))]):
@@ -124,7 +127,9 @@ class RetryTests(unittest.TestCase):
         rt = _ready_runtime(has_requests=True)
         for status, expected in [(429, True), (503, True), (401, False), (400, False)]:
             response = mock.Mock(ok=False, status_code=status, text="err")
-            with self.subTest(status=status), mock.patch("requests.post", return_value=response):
+            patcher, fake = fake_requests()
+            fake.post.return_value = response
+            with self.subTest(status=status), patcher:
                 self.assertEqual(rt._requests_call({}, None), (None, expected))
 
     def test_curl_path_is_used_only_without_requests(self):
@@ -174,8 +179,8 @@ class ClaudeCodeFallbackEndpointTests(unittest.TestCase):
         rt = ClaudeCodeRuntime()
         rt._api_key = "sk-test-key-123456"
         rt.log = mock.Mock()
-        with mock.patch.dict(os.environ, {"LLM_API_BASE": "file:///etc/passwd"}), \
-                mock.patch("requests.post") as post:
+        patcher, fake = fake_requests()
+        with mock.patch.dict(os.environ, {"LLM_API_BASE": "file:///etc/passwd"}), patcher:
             self.assertIsNone(rt._generic_agent_call("p", None))
-        post.assert_not_called()
+        fake.post.assert_not_called()
         self.assertTrue(any("LLM_API_BASE" in call.args[0] for call in rt.log.call_args_list))
