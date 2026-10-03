@@ -16,9 +16,12 @@ Usage:
 
 import os
 import sys
-import traceback
-from concurrent.futures import Future, ThreadPoolExecutor
-from typing import Any, Callable, List
+from concurrent.futures import ThreadPoolExecutor, wait
+from typing import Any, Callable, List, Optional
+
+from core.logs import get_logger
+
+_LOG = get_logger("parallel")
 
 
 def _detect_capability() -> str:
@@ -48,7 +51,7 @@ def pipeline(items: List[Any], fn: Callable[[Any], Any]) -> List[Any]:
     results = []
     total = len(items)
     for i, item in enumerate(items):
-        print(f"  pipeline: {i+1}/{total}", file=sys.stderr)
+        _LOG.info(f"  pipeline: {i+1}/{total}")
         try:
             result = fn(item)
             results.append(result)
@@ -91,23 +94,49 @@ def parallel(fn_list: List[Callable[[], Any]], max_workers: int = 5) -> List[Any
     return _threaded_parallel(functions, max_workers)
 
 
-def _threaded_parallel(fn_list: List[Callable[[], Any]], max_workers: int = 5) -> List[Any]:
-    """Execute functions with a bounded pool, keeping input order."""
-    if not fn_list:
+def run_bounded(fn_list: List[Callable[[], Any]], max_workers: int = 5,
+                timeout: Optional[float] = None,
+                on_error: Optional[Callable[[int, BaseException], None]] = None,
+                on_timeout: Optional[Callable[[int], None]] = None) -> List[Any]:
+    """The one bounded-parallel primitive used by every runtime.
+
+    Results keep input order. A failing task yields None (reported via ``on_error``,
+    default: traceback on stderr) and never affects its siblings. If ``timeout``
+    (seconds, for the whole batch) elapses, unfinished tasks yield None and
+    ``on_timeout(count)`` is called; queued tasks are cancelled, tasks already
+    running finish on their own (each runtime call carries its own I/O timeout).
+    """
+    functions = list(fn_list)
+    if not functions:
         return []
 
-    results = [None] * len(fn_list)
-    workers = min(max_workers, len(fn_list))
-    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="deep-dive") as executor:
-        futures: List[Future] = [executor.submit(fn) for fn in fn_list]
-        for i, future in enumerate(futures):
+    results: List[Any] = [None] * len(functions)
+    executor = ThreadPoolExecutor(max_workers=min(max_workers, len(functions)),
+                                  thread_name_prefix="deep-dive")
+    try:
+        futures = [executor.submit(fn) for fn in functions]
+        _, pending = wait(futures, timeout=timeout)
+        for index, future in enumerate(futures):
+            if future in pending:
+                continue
             try:
-                results[i] = future.result()
-            except BaseException as exc:
-                # A worker must not take down the remaining work or hide its traceback.
-                _log_failure("parallel worker", i, exc)
-
+                results[index] = future.result()
+            except BaseException as exc:  # a worker must not take down its siblings
+                (on_error or _log_failure_at)(index, exc)
+        if pending and on_timeout is not None:
+            on_timeout(len(pending))
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
     return results
+
+
+def _threaded_parallel(fn_list: List[Callable[[], Any]], max_workers: int = 5) -> List[Any]:
+    """Execute functions with a bounded pool, keeping input order."""
+    return run_bounded(fn_list, max_workers)
+
+
+def _log_failure_at(index: int, exc: BaseException) -> None:
+    _log_failure("parallel worker", index, exc)
 
 
 def _validate_max_workers(max_workers: int) -> None:
@@ -117,5 +146,5 @@ def _validate_max_workers(max_workers: int) -> None:
 
 def _log_failure(operation: str, index: int, exc: BaseException) -> None:
     """Report an isolated task failure without interrupting sibling tasks."""
-    print(f"  {operation} {index} error: {type(exc).__name__}: {exc}", file=sys.stderr)
-    traceback.print_exception(type(exc), exc, exc.__traceback__, file=sys.stderr)
+    _LOG.error(f"  {operation} {index} error: {type(exc).__name__}")
+    _LOG.debug("traceback", exc_info=(type(exc), exc, exc.__traceback__))

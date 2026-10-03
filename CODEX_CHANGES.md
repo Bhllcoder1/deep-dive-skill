@@ -1,3 +1,5 @@
+> **Historical note:** this describes the Codex hardening pass. Later changes (shared modules, `Config`, phase pipeline, removal of the unused `core/agent.py` and `core/web.py`, `CliRuntime`) are documented in [`docs/ANALYSIS.md`](docs/ANALYSIS.md).
+
 # Codex Hardening Pass
 
 For OpenAI Build Week, [OpenAI Codex](https://openai.com/index/introducing-codex/) (GPT-5.6-Terra) was run against this repository file-by-file: for each core module, Codex was told to read the file plus `README.md` for context, understand its exact role in the pipeline, and do a genuine engineering pass — not a cosmetic rewrite. Ten files were covered in independent sessions, each restricted to its own file so the diffs stay auditable per-module. Per-file notes are in [`CODEX_CHANGES/`](CODEX_CHANGES/).

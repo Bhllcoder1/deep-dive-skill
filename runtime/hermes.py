@@ -10,21 +10,28 @@ Kullanım:
     result = rt.agent_call("prompt", schema)
 """
 
-import html
 import json
 import os
-import queue
 import re
 import shutil
 import subprocess
 import tempfile
-import threading
 import time
 from typing import Any, Callable, List, Optional
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import urlsplit
+
+from core.jsonparse import extract_json_object
+from core.logs import get_logger
+from core.parallel import run_bounded
+from core.safefetch import fetch_text_with_curl, secret_header_file
+from core.urlsafe import is_public_http_url
+from core.websearch import web_search_chain
 
 from .base import BaseRuntime
+from .cli import run_cli_json
 
+
+_LOG = get_logger("runtime.hermes")
 
 class HermesRuntime(BaseRuntime):
     """Hermes Agent için runtime adaptörü."""
@@ -41,21 +48,35 @@ class HermesRuntime(BaseRuntime):
     def __init__(self):
         self._api_key = ""
         self._ready = False
+        self._failures = 0
+        self._hermes_cmd = self._resolve_hermes()
+
+    @staticmethod
+    def _resolve_hermes() -> Optional[list]:
+        """Hermes'in kendi tek-atış modu (`hermes -z PROMPT`, canlı doğrulandı): kendi yapılandırılmış
+        sağlayıcısını kullanır, ayrı API anahtarı gerektirmez. `DR_HERMES_CLI=0` ile kapatılır."""
+        if os.environ.get("DR_HERMES_CLI", "1") == "0":
+            return None
+        found = shutil.which("hermes")
+        return [found, "-z"] if found else None
 
     def setup(self) -> bool:
-        """API key ve curl kullanılabilirliğini kontrol eder."""
+        """Hermes CLI'ı ya da API key + curl kullanılabilirliğini kontrol eder."""
         self._ready = False
         self._api_key = self._find_api_key()
-        if not self._api_key:
-            print("[hermes] ❌ DEEPSEEK_API_KEY bulunamadı. ~/.env veya environment değişkenine ekleyin.")
-            return False
-
         if not shutil.which("curl"):
-            print("[hermes] ❌ curl bulunamadı. Hermes runtime curl gerektirir.")
+            _LOG.error("[hermes] ❌ curl bulunamadı. Hermes runtime arama/fetch için curl gerektirir.")
+            return False
+        if self._hermes_cmd:
+            self._ready = True
+            _LOG.info("[hermes] ✅ Runtime hazır (hermes -z" + (", API yedeği hazır)" if self._api_key else ")"))
+            return True
+        if not self._api_key:
+            _LOG.error("[hermes] ❌ DEEPSEEK_API_KEY bulunamadı. ~/.env, ~/.hermes/.env veya environment değişkenine ekleyin.")
             return False
 
         self._ready = True
-        print("[hermes] ✅ Runtime hazır (API anahtarı yapılandırıldı)")
+        _LOG.info("[hermes] ✅ Runtime hazır (API anahtarı yapılandırıldı)")
         return True
 
     def _find_api_key(self) -> str:
@@ -64,16 +85,17 @@ class HermesRuntime(BaseRuntime):
         if key:
             return key
 
-        try:
-            with open(os.path.expanduser("~/.env"), encoding="utf-8") as env_file:
-                for line in env_file:
-                    match = re.match(r"\s*(?:export\s+)?DEEPSEEK_API_KEY\s*=\s*(.*?)\s*$", line, re.IGNORECASE)
-                    if match:
-                        key = self._clean_api_key(match.group(1))
-                        if key:
-                            return key
-        except (FileNotFoundError, OSError, UnicodeError):
-            pass
+        for env_path in ("~/.env", "~/.hermes/.env"):
+            try:
+                with open(os.path.expanduser(env_path), encoding="utf-8") as env_file:
+                    for line in env_file:
+                        match = re.match(r"\s*(?:export\s+)?DEEPSEEK_API_KEY\s*=\s*(.*?)\s*$", line, re.IGNORECASE)
+                        if match:
+                            key = self._clean_api_key(match.group(1))
+                            if key:
+                                return key
+            except (FileNotFoundError, OSError, UnicodeError):
+                pass
 
         # The previous implementation read zero bytes from this file, so this
         # branch could never find a key. Support the common nested YAML shape:
@@ -129,6 +151,15 @@ class HermesRuntime(BaseRuntime):
         if not self._ready and not self.setup():
             return None
 
+        if self._hermes_cmd and self._failures < 3:
+            result = run_cli_json(self._hermes_cmd, prompt, schema, prompt_mode="arg", timeout=120, tag="hermes")
+            self._failures = 0 if result is not None else self._failures + 1
+            if result is not None:
+                return result
+        if not self._api_key:
+            self.log("agent çağrısı: hermes -z başarısız ve API anahtarı yok")
+            return None
+
         endpoint = self._chat_endpoint()
         if not endpoint:
             self.log("geçersiz LLM_API_BASE")
@@ -157,20 +188,20 @@ class HermesRuntime(BaseRuntime):
                 json.dump(payload, payload_file, ensure_ascii=False)
                 payload_path = payload_file.name
 
-            result = subprocess.run(
-                [
-                    "curl", "-sS", "-L", "--connect-timeout", "10",
-                    "--max-time", str(self.API_TIMEOUT_SECONDS),
-                    "--write-out", "\n%{http_code}", endpoint,
-                    "-H", "Content-Type: application/json",
-                    "-H", f"Authorization: Bearer {self._api_key}",
-                    "-d", f"@{payload_path}",
-                ],
-                capture_output=True,
-                text=True,
-                errors="replace",
-                timeout=self.API_TIMEOUT_SECONDS + 5,
-            )
+            with secret_header_file({"Authorization": f"Bearer {self._api_key}",
+                                     "Content-Type": "application/json"}) as header_path:
+                result = subprocess.run(
+                    [
+                        "curl", "-sS", "--connect-timeout", "10",
+                        "--max-time", str(self.API_TIMEOUT_SECONDS),
+                        "--write-out", "\n%{http_code}",
+                        "-H", f"@{header_path}", "-d", f"@{payload_path}", "--", endpoint,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    errors="replace",
+                    timeout=self.API_TIMEOUT_SECONDS + 5,
+                )
             elapsed = time.monotonic() - start
             if result.returncode != 0:
                 self.log(f"{phase_str}{label_str}curl hatası: {self._short_error(result.stderr)}")
@@ -206,7 +237,7 @@ class HermesRuntime(BaseRuntime):
                 self.log(f"{phase_str}{label_str}API yanıtında metin içeriği yok")
                 return None
 
-            parsed = self._extract_json(content, schema)
+            parsed = extract_json_object(content, schema)
             if parsed is not None:
                 self.log(f"{phase_str}{label_str}✓ {elapsed:.1f}s")
             else:
@@ -240,63 +271,11 @@ class HermesRuntime(BaseRuntime):
             pass
         return self._short_error(body)
 
-    def _extract_json(self, text: str, schema: Optional[dict] = None) -> Optional[dict]:
-        """Metinden tek bir JSON nesnesi çıkarır ve gerekli schema alanlarını kontrol eder."""
-        if not isinstance(text, str) or not text.strip():
-            return None
-
-        decoder = json.JSONDecoder()
-        candidates = [text.strip()]
-        candidates.extend(match.group(1).strip() for match in re.finditer(
-            r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL | re.IGNORECASE
-        ))
-        for candidate in candidates:
-            try:
-                parsed = json.loads(candidate)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(parsed, dict) and self._matches_schema(parsed, schema):
-                return parsed
-
-        # raw_decode avoids the old greedy {.*} regex, which merged multiple
-        # objects or braces in prose into malformed JSON.
-        for match in re.finditer(r"\{", text):
-            try:
-                parsed, _ = decoder.raw_decode(text[match.start():])
-            except json.JSONDecodeError:
-                continue
-            if isinstance(parsed, dict) and self._matches_schema(parsed, schema):
-                return parsed
-        return None
-
-    @staticmethod
-    def _matches_schema(parsed: dict, schema: Optional[dict]) -> bool:
-        if not schema:
-            return True
-        required = schema.get("required", [])
-        return isinstance(required, list) and all(isinstance(name, str) and name in parsed for name in required)
-
     @staticmethod
     def _valid_result_limit(max_results: int) -> Optional[int]:
         if isinstance(max_results, bool) or not isinstance(max_results, int) or max_results < 1:
             return None
         return max_results
-
-    @staticmethod
-    def _is_http_url(url: str) -> bool:
-        if not isinstance(url, str) or not url or any(char.isspace() for char in url):
-            return False
-        parsed = urlsplit(url)
-        return parsed.scheme.lower() in {"http", "https"} and bool(parsed.hostname)
-
-    def _ddg_result_url(self, url: str) -> Optional[str]:
-        url = html.unescape(url).strip()
-        if url.startswith("//"):
-            url = f"https:{url}"
-        parsed = urlsplit(url)
-        if parsed.hostname and parsed.hostname.lower().endswith("duckduckgo.com") and parsed.path.startswith("/l/"):
-            url = parse_qs(parsed.query).get("uddg", [""])[0]
-        return url if self._is_http_url(url) else None
 
     def web_search(self, query: str, max_results: int = 6) -> List[dict]:
         """DuckDuckGo HTML ile senkron web araması yapar."""
@@ -306,148 +285,35 @@ class HermesRuntime(BaseRuntime):
             return []
         self.log(f"web_search: {query[:60]}...")
 
-        try:
-            result = subprocess.run(
-                [
-                    "curl", "-sS", "-L", "--connect-timeout", "5", "--max-time", "15",
-                    "https://html.duckduckgo.com/html/", "--get", "--data-urlencode", f"q={query}",
-                    "-H", f"User-Agent: {self.USER_AGENT}",
-                ],
-                capture_output=True,
-                text=True,
-                errors="replace",
-                timeout=20,
-            )
-            if result.returncode != 0:
-                self.log(f"DDG search hatası: {self._short_error(result.stderr)}")
-                return []
-
-            results = []
-            seen_urls = set()
-            for match in re.finditer(r'<a[^>]+class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', result.stdout, re.DOTALL):
-                url = self._ddg_result_url(match.group(1))
-                title = html.unescape(re.sub(r"<[^>]+>", "", match.group(2))).strip()
-                if not url or not title or url in seen_urls:
-                    continue
-                seen_urls.add(url)
-                results.append({"url": url, "title": title, "snippet": "", "relevance": "medium"})
-                if len(results) >= limit:
-                    break
-            return results
-        except subprocess.TimeoutExpired:
-            self.log("DDG search zaman aşımına uğradı")
-        except OSError as error:
-            self.log(f"DDG search hatası: {self._short_error(str(error))}")
-        return []
+        results = web_search_chain(query, limit, "curl", user_agent=self.USER_AGENT)
+        if not results:
+            self.log("DDG search sonuç vermedi veya başarısız oldu")
+        return results
 
     def web_fetch(self, url: str) -> Optional[str]:
-        """HTTP(S) URL içeriğini curl ile getirip HTML'den metne dönüştürür."""
-        if not self._is_http_url(url):
-            self.log("web_fetch geçersiz veya desteklenmeyen URL nedeniyle atlandı")
+        """Public HTTP(S) URL'yi (yönlendirmeler ve DNS dahil kontrollü) metne çevirir."""
+        if not is_public_http_url(url):
+            self.log("web_fetch geçersiz, yerel veya desteklenmeyen URL nedeniyle atlandı")
             return None
         self.log(f"web_fetch: {url[:80]}...")
-
-        try:
-            result = subprocess.run(
-                [
-                    "curl", "-sS", "-L", "--proto", "=http,https", "--proto-redir", "=http,https",
-                    "--connect-timeout", "10", "--max-time", str(self.FETCH_TIMEOUT_SECONDS),
-                    "-H", f"User-Agent: {self.USER_AGENT}", "--", url,
-                ],
-                capture_output=True,
-                text=True,
-                errors="replace",
-                timeout=self.FETCH_TIMEOUT_SECONDS + 5,
-            )
-            if result.returncode != 0:
-                self.log(f"fetch hatası: {self._short_error(result.stderr)}")
-                return None
-            if not result.stdout.strip():
-                return None
-            text = re.sub(r"<!--.*?-->", "", result.stdout, flags=re.DOTALL)
-            text = re.sub(r"<(?:script|style)[^>]*>.*?</(?:script|style)>", "", text, flags=re.DOTALL | re.IGNORECASE)
-            text = html.unescape(re.sub(r"<[^>]+>", " ", text))
-            return re.sub(r"\s+", " ", text).strip()[:15000] or None
-        except subprocess.TimeoutExpired:
-            self.log("fetch zaman aşımına uğradı")
-        except OSError as error:
-            self.log(f"fetch hatası: {self._short_error(str(error))}")
-        return None
+        text = fetch_text_with_curl(url, "curl", user_agent=self.USER_AGENT,
+                                    max_time=self.FETCH_TIMEOUT_SECONDS)
+        if text is None:
+            self.log("fetch başarısız (reddedildi, hata veya zaman aşımı)")
+        return text
 
     def run_parallel(self, fn_list: List[Callable[[], Any]],
                      max_workers: int = 3) -> List[Any]:
-        """İşleri sınırlı sayıda daemon worker ile, sıra korunarak çalıştırır."""
+        """İşleri sınırlı sayıda worker ile, sıra korunarak çalıştırır."""
         if not isinstance(fn_list, list):
             raise TypeError("fn_list must be a list of callables")
         if any(not callable(fn) for fn in fn_list):
             raise TypeError("fn_list must contain only callables")
         if isinstance(max_workers, bool) or not isinstance(max_workers, int) or max_workers < 1:
             raise ValueError("max_workers must be a positive integer")
-        if not fn_list:
-            return []
-
-        results = [None] * len(fn_list)
-        errors = [None] * len(fn_list)
-        completed = [False] * len(fn_list)
-        work_queue = queue.Queue()
-        lock = threading.Lock()
-        stop_workers = threading.Event()
-        for index, fn in enumerate(fn_list):
-            work_queue.put((index, fn))
-
-        def worker() -> None:
-            while not stop_workers.is_set():
-                try:
-                    index, fn = work_queue.get_nowait()
-                except queue.Empty:
-                    return
-                try:
-                    value = fn()
-                    with lock:
-                        if not stop_workers.is_set():
-                            results[index] = value
-                except Exception as error:
-                    with lock:
-                        if not stop_workers.is_set():
-                            errors[index] = error
-                finally:
-                    with lock:
-                        if not stop_workers.is_set():
-                            completed[index] = True
-                    work_queue.task_done()
-
-        workers = [threading.Thread(target=worker, daemon=True) for _ in range(min(max_workers, len(fn_list)))]
-        for thread in workers:
-            thread.start()
-
-        deadline = time.monotonic() + self.PARALLEL_TIMEOUT_SECONDS
-        for thread in workers:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                break
-            thread.join(remaining)
-
-        with lock:
-            timed_out = [index for index, done in enumerate(completed) if not done]
-            if timed_out:
-                stop_workers.set()
-            worker_errors = list(enumerate(errors))
-        if timed_out:
-            self.log(f"parallel timeout: {len(timed_out)} iş tamamlanmadı")
-        for index, error in worker_errors:
-            if error is not None:
-                self.log(f"parallel worker {index} error: {self._short_error(str(error))}")
-        return results
-
-    def phase(self, name: str, detail: str = "") -> None:
-        """Faz bildirimi — Hermes stili."""
-        line = "─" * 50
-        print(f"\n{line}")
-        print(f" 🔬 PHASE: {name}")
-        if detail:
-            print(f"    {detail}")
-        print(f"{line}")
-
-    def log(self, message: str) -> None:
-        """Log — Hermes stili."""
-        print(f"  ⚡ {message}")
+        return run_bounded(
+            fn_list, max_workers, timeout=self.PARALLEL_TIMEOUT_SECONDS,
+            on_error=lambda index, exc: self.log(
+                f"parallel worker {index} error: {self._short_error(str(exc))}"),
+            on_timeout=lambda count: self.log(f"parallel timeout: {count} iş tamamlanmadı"),
+        )

@@ -94,9 +94,11 @@ class PipelineController:
         
         def _run():
             try:
-                os.environ["DR_RUNTIME"] = runtime
                 from harness import deep_research
-                self.result = deep_research(question, show_dashboard=False)
+                result = deep_research(question, runtime_name=runtime, show_dashboard=False)
+                if self._stop_event.is_set():
+                    return  # cancelled: the run cannot be interrupted mid-flight, its result is discarded
+                self.result = result
                 self.progress["status"] = "completed"
             except Exception as e:
                 self.error = str(e)
@@ -109,7 +111,7 @@ class PipelineController:
         return True
     
     def stop(self):
-        """Pipeline'ı durdur."""
+        """İptal iste. Çalışan araştırma yarıda kesilemez; sonucu atılır."""
         self._stop_event.set()
         self.running = False
         self.progress["status"] = "cancelled"
@@ -139,7 +141,7 @@ class HistoryManager:
             if os.path.exists(self.db_path):
                 with open(self.db_path) as f:
                     return json.load(f)
-        except:
+        except (OSError, ValueError):
             pass
         return []
     
@@ -147,7 +149,7 @@ class HistoryManager:
         try:
             with open(self.db_path, "w") as f:
                 json.dump(self.records[-50:], f, indent=2)
-        except:
+        except (OSError, TypeError, ValueError):
             pass
     
     def add(self, question: str, result: dict):
@@ -179,6 +181,7 @@ class Dashboard:
         self.mode = "main"  # main, history, model_select, help
         self.selected_idx = 0
         self.filter_mode = None
+        self._last_question = ""
         self.message = ""
         self.message_time = 0
         
@@ -401,6 +404,19 @@ class Dashboard:
 
     # ─── Actions ───
 
+    def save_report(self, path: str = "bdeep-research-report.json"):
+        """Son sonucu gerçekten diske yaz."""
+        result = self.pipeline.result
+        if not result:
+            self.set_message("No finished report to save")
+            return
+        try:
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(result, handle, indent=2, ensure_ascii=False, default=str)
+            self.set_message(f"Report saved to {path}")
+        except (OSError, TypeError, ValueError) as exc:
+            self.set_message(f"Save failed: {exc}")
+
     def start_research(self):
         """Araştırma başlat — input modu aç."""
         self._input_mode = True
@@ -506,11 +522,8 @@ class Dashboard:
                             self.toggle_history()
                         elif key == 'm':
                             self.toggle_model()
-                        elif key == 'f':
-                            from core.dashboard import Dashboard as D
-                            D.cycle_filter(self)
                         elif key == 's':
-                            self.set_message("Report saved to bdeep-research-report.json")
+                            self.save_report()
                         elif key == '\x03':  # Ctrl+C
                             if self.pipeline.running:
                                 self.pipeline.stop()

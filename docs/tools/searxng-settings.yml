@@ -1,0 +1,35 @@
+# SearXNG settings for deep-dive: JSON API enabled, engines that work without captchas.
+use_default_settings: true
+
+server:
+  secret_key: "__SECRET__"
+  image_proxy: true
+  limiter: false
+
+search:
+  formats:
+    - html
+    - json
+  default_lang: "all"
+
+# Fewer bot limits
+outgoing:
+  request_timeout: 10.0
+  max_request_timeout: 15.0
+
+# Engines that rate-limit / captcha this IP are disabled; bing + google + stackoverflow + github work.
+engines:
+  - name: duckduckgo
+    disabled: true  # bot-challenges SearXNG even through Tor; deep-dive's own chain uses DR_SEARCH_PROXY instead
+  - name: brave
+    disabled: true
+  - name: startpage
+    disabled: true
+  - name: bing
+    disabled: false
+  - name: google
+    disabled: false
+  - name: stackoverflow
+    disabled: false
+  - name: github
+    disabled: false

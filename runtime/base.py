@@ -13,7 +13,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from math import isfinite
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type
+from core.logs import get_logger
+from typing import Any, Callable, List, Optional, Tuple, Type
 
 
 class IntegrationMode(str, Enum):
@@ -204,14 +205,13 @@ class BaseRuntime(ABC):
         """Fonksiyonları paralel çalıştırır. Returns: Sonuçlar listesi"""
         ...
 
+    run_id: str = "-"
+
     def phase(self, name: str, detail: str = "") -> None:
-        """Faz değişikliğini bildirir."""
-        print(f"\n=== Phase: {name} ===" + (f" {detail}" if detail else ""))
-        # Dashboard: seçili fazı güncelle
-        if hasattr(self, '_dashboard') and self._dashboard:
-            phase_name = name.split('/')[-1].split(' —')[0].strip()
-            self._dashboard.select_phase(phase_name)
+        """Faz değişikliğini loglar (stderr)."""
+        get_logger("runtime").info("\n" + "─" * 50 + f"\n 📋 PHASE: {name}" + (f"\n    {detail}" if detail else "")
+                                   + "\n" + "─" * 50, extra={"run_id": self.run_id})
 
     def log(self, message: str) -> None:
-        """Log mesajı basar."""
-        print(f"  [{self.name}] {message}")
+        """Log mesajı yazar (stderr)."""
+        get_logger("runtime").info(f"  [{self.name}] {message}", extra={"run_id": self.run_id})

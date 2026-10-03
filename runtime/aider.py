@@ -5,7 +5,12 @@ Kendi web search tool'u yok -> generic fallback kullanır.
 Özel: --model ile farklı LLM kullanabilir.
 """
 
+from core.logs import get_logger
+
 from .generic import GenericRuntime
+
+
+_LOG = get_logger("runtime.aider")
 
 
 class AiderRuntime(GenericRuntime):
@@ -18,5 +23,5 @@ class AiderRuntime(GenericRuntime):
     def setup(self) -> bool:
         result = super().setup()
         if result:
-            print("[aider] ⚠ Web araması için DDG scraping kullanılacak (built-in web search yok)")
+            _LOG.warning("[aider] ⚠ Web araması için DDG scraping kullanılacak (built-in web search yok)")
         return result

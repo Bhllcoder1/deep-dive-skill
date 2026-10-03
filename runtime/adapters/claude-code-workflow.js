@@ -202,8 +202,9 @@ export async function deepResearch(question) {
 
     const valid = verdicts.filter(Boolean);
     const refutedCount = valid.filter(v => v.refuted).length;
-    const survives = valid.length >= REFUTATIONS_REQUIRED && refutedCount < REFUTATIONS_REQUIRED;
     const isRefuted = refutedCount >= REFUTATIONS_REQUIRED;
+    // Same rule as core/phases/verify.py: a tie is unverified; support needs the same threshold.
+    const survives = (valid.length - refutedCount) >= REFUTATIONS_REQUIRED && !isRefuted;
     const mark = survives ? '✓' : isRefuted ? '✗' : '?';
     log(`"${claim.claim.slice(0, 50)}…": ${valid.length - refutedCount}-${refutedCount} ${mark}`);
 
