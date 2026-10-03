@@ -52,7 +52,7 @@ class CliRuntimeTests(unittest.TestCase):
             self.assertIsNone(CopilotRuntime()._cli_cmd)  # `gh copilot` is not a scriptable agent
         make_script(self.dir, "copilot", "true\n")
         with self.env():
-            self.assertEqual(CopilotRuntime()._cli_cmd, [os.path.join(self.dir, "copilot"), "-p"])
+            self.assertEqual(CopilotRuntime()._cli_cmd, [os.path.join(self.dir, "copilot"), "-s", "-p"])
 
     def test_platforms_without_a_known_headless_cli_are_never_probed(self):
         marker = os.path.join(self.dir, "LAUNCHED")

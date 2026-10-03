@@ -2,7 +2,7 @@
 
 from typing import Any, Dict
 
-from core import prompts, results, validate
+from core import prompts, results, textutil, validate
 from core.context import RunContext
 from core.schemas import EXTRACT_SCHEMA
 from core.state import RunState
@@ -15,11 +15,13 @@ def _fetch_source(ctx: RunContext, source: Dict[str, str]) -> Dict[str, Any]:
     content = ctx.web_fetch(source["url"])
     extracted = None
     if content:
-        extracted = ctx.agent(prompts.fetch(source, ctx.question, source["angle"], content), EXTRACT_SCHEMA,
+        shown = textutil.excerpt(content, f"{ctx.question} {source.get('angle', '')}", ctx.cfg.excerpt_chars)
+        extracted = ctx.agent(prompts.fetch(source, ctx.question, source["angle"], shown), EXTRACT_SCHEMA,
                               f"fetch:{(source['title'] or source['url'])[:40]}", "Fetch")
     quality, publish_date, claims = validate.valid_extraction(extracted, source)
     for claim in claims:
         claim["quoteInSource"] = bool(content) and validate.quote_in_source(claim["quote"], content)
+        claim["context"] = textutil.context_around(content, claim["quote"]) if claim["quoteInSource"] else ""
     ctx.log(f"  → {len(claims)} claim çıkarıldı" if content and extracted else "  → fetch/extraction başarısız")
     return {"url": source["url"], "title": source["title"], "angle": source["angle"],
             "via": source.get("via", "web_search"), "sourceQuality": quality,
@@ -35,7 +37,7 @@ def run(ctx: RunContext, state: RunState) -> None:
             "via": source.get("via", "web_search"), "sourceQuality": "unreliable",
             "publishDate": "", "claims": []})
 
-    state.all_claims = [claim for source in state.fetched for claim in source["claims"]]
+    state.all_claims = textutil.dedupe_claims(claim for source in state.fetched for claim in source["claims"])
     state.all_claims.sort(key=lambda claim: (
         validate.imp_rank(claim["importance"]), validate.qual_rank(claim["sourceQuality"]),
         not claim.get("quoteInSource", False),

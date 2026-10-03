@@ -37,6 +37,7 @@ def stats(ctx: RunContext, state: RunState, after_synthesis: int = 0) -> Dict[st
         "afterSynthesis": after_synthesis, "urlDupes": len(state.dupes),
         "agentCalls": ctx.agent_calls, "searchFallbacks": state.search_fallbacks,
         "phaseSeconds": dict(ctx.timings),
+        "estTokens": dict(ctx.est_tokens),
     }
 
 

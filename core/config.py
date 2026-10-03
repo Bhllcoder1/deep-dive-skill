@@ -16,9 +16,13 @@ OPTION_ENV: Dict[str, str] = {
     "refutations_required": "DR_REFUTATIONS_REQUIRED",
     "max_workers": "DR_MAX_WORKERS",
     "phase_budget_s": "DR_PHASE_BUDGET",
+    "max_per_domain": "DR_MAX_PER_DOMAIN",
+    "excerpt_chars": "DR_EXCERPT_CHARS",
 }
 _INT_OPTIONS = tuple(name for name in OPTION_ENV if name != "tier")
 DEFAULT_PHASE_BUDGET_S = 900
+# Not part of the tier presets: source diversity and per-page token budget.
+EXTRA_DEFAULTS: Dict[str, int] = {"max_per_domain": 2, "excerpt_chars": 6000}
 
 
 @dataclass(frozen=True)
@@ -34,6 +38,8 @@ class Config:
     max_workers: int = TIER_PRESETS[DEFAULT_TIER]["max_workers"]
     # Wall-clock budget per phase (seconds). A phase stops starting new work after it.
     phase_budget_s: int = DEFAULT_PHASE_BUDGET_S
+    max_per_domain: int = EXTRA_DEFAULTS["max_per_domain"]   # source diversity: at most N fetched pages per site
+    excerpt_chars: int = EXTRA_DEFAULTS["excerpt_chars"]     # chars of each page sent to the extractor
 
     def __post_init__(self) -> None:
         if self.tier not in TIER_PRESETS:
@@ -63,7 +69,7 @@ class Config:
         tier = str(overrides.get("tier", environ.get(OPTION_ENV["tier"], "")) or DEFAULT_TIER).strip().lower()
         if tier not in TIER_PRESETS:
             raise ValueError("tier must be one of: " + ", ".join(TIER_PRESETS) + ".")
-        preset = dict(TIER_PRESETS[tier], phase_budget_s=DEFAULT_PHASE_BUDGET_S)
+        preset = dict(TIER_PRESETS[tier], phase_budget_s=DEFAULT_PHASE_BUDGET_S, **EXTRA_DEFAULTS)
         values: Dict[str, Any] = {"tier": tier}
         for name in _INT_OPTIONS:
             values[name] = _strict_int(name, overrides.get(name, environ.get(OPTION_ENV[name], preset[name])))
@@ -75,7 +81,7 @@ class Config:
         environ = os.environ if environ is None else environ
         tier = (environ.get(OPTION_ENV["tier"], "") or DEFAULT_TIER).strip().lower()
         tier = tier if tier in TIER_PRESETS else DEFAULT_TIER
-        preset = dict(TIER_PRESETS[tier], phase_budget_s=DEFAULT_PHASE_BUDGET_S)
+        preset = dict(TIER_PRESETS[tier], phase_budget_s=DEFAULT_PHASE_BUDGET_S, **EXTRA_DEFAULTS)
         values: Dict[str, Any] = {"tier": tier}
         for name in _INT_OPTIONS:
             try:

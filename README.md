@@ -156,6 +156,8 @@ Any individual `DR_*` setting below overrides its tier value, so you can start f
 | `SearXNG_URL` (or `SEARXNG_URL`) | — | HTTP(S) URL of a self-hosted SearXNG instance, queried first by the generic runtime (most dependable option; enable engines that work from your IP, e.g. bing, google, stackoverflow, github). Search chain otherwise: Brave (if `BRAVE_API_KEY`) → Bing HTML → Wikipedia → Google CSE (if configured). **DuckDuckGo is off by default** (its HTML endpoint bot-challenges bursts); `DR_SEARCH_DDG=1` adds it as a last resort. Thin result lists are topped up from keyless vertical APIs (`DR_SEARCH_VERTICALS`, default `stackexchange,hn,openalex`; also `github`, `arxiv`; empty disables). `docs/tools/setup_searxng.sh` starts a local SearXNG with working engines. |
 | `DR_SEARCH_PROXY` | — | `socks5h://host:port` (or http/https) proxy for the Bing/DuckDuckGo HTML requests. With it set, DuckDuckGo (blocked on many plain IPs) goes first and works; `docs/tools/setup_tor.sh` starts a local Tor proxy (`socks5h://127.0.0.1:9050`). |
 | `TAVILY_API_KEY` / `SERPER_API_KEY` | — | Optional keyed backends (free tiers) tried before Brave. |
+| `DR_MAX_PER_DOMAIN` / `DR_EXCERPT_CHARS` | 2 / 6000 | Max fetched pages per site; chars of each page sent to the extractor (query-relevant paragraphs). See `docs/EFFICIENCY.md`. |
+| `DR_CACHE` / `DR_CACHE_DIR` / `DR_CACHE_TTL` | on / `~/.cache/deep-dive` / 21600 | On-disk cache of fetched pages and search results (`DR_CACHE=0` disables). |
 | `DR_FETCH_JINA` | — | `1` = if a direct fetch returns nothing, retry through r.jina.ai (renders JS pages). Sends the URL to a third party. |
 | `LLM_PROVIDER` | `deepseek` | Dashboard/monitor provider selection. |
 | `LLM_API_KEY` | — | Explicit dashboard/monitor API key. |

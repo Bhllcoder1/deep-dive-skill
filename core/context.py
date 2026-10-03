@@ -5,6 +5,7 @@ import time
 import uuid
 from typing import Any, Callable, Dict, List, Optional
 
+from core import cache
 from core.config import Config
 from core.jsonparse import extract_json_object
 from core.validate import valid_search_results
@@ -22,6 +23,7 @@ class RunContext:
         self.run_id = run_id or uuid.uuid4().hex[:8]
         self.timings: Dict[str, float] = {}
         self._calls = 0
+        self.est_tokens = {"in": 0, "out": 0}  # rough (chars/4) cost meter for the run
         self._lock = threading.Lock()
         self._phase = ""
         self._phase_start = 0.0
@@ -61,27 +63,41 @@ class RunContext:
     def agent(self, prompt: str, schema: dict, label: str, phase: str) -> Optional[dict]:
         with self._lock:
             self._calls += 1
+            self.est_tokens["in"] += len(prompt) // 4
         try:
-            return extract_json_object(self.rt.agent_call(prompt, schema=schema, label=label, phase=phase))
+            raw = self.rt.agent_call(prompt, schema=schema, label=label, phase=phase)
+            with self._lock:
+                self.est_tokens["out"] += len(raw if isinstance(raw, str) else repr(raw)) // 4
+            return extract_json_object(raw)
         except Exception as error:
             self.log(f"{label} başarısız: {type(error).__name__}")
             return None
 
     def web_search(self, query: str) -> List[Dict[str, str]]:
+        cached = cache.get("search", query)
+        if cached:
+            return valid_search_results(cached)
         try:
             raw = self.rt.web_search(query, max_results=6)
         except Exception as error:
             self.log(f"web_search başarısız ({type(error).__name__})")
             return []
-        return valid_search_results(raw)
+        found = valid_search_results(raw)
+        cache.put("search", query, found)
+        return found
 
     def web_fetch(self, url: str) -> Optional[str]:
+        cached = cache.get("fetch", url)
+        if isinstance(cached, str):
+            return cached
         try:
             content = self.rt.web_fetch(url)
         except Exception as error:
             self.log(f"fetch başarısız ({type(error).__name__}): {url[:80]}")
             return None
-        return content.strip()[:15000] or None if isinstance(content, str) else None
+        text = content.strip()[:15000] or None if isinstance(content, str) else None
+        cache.put("fetch", url, text)
+        return text
 
     def run_parallel(self, functions: List[Callable[[], Any]]) -> List[Any]:
         """Run in batches of at most cfg.max_workers (even if the runtime ignores the bound),

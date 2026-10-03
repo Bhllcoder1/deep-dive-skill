@@ -179,10 +179,12 @@ class GeminiRuntime(CliRuntime):
 
 
 class CopilotRuntime(CliRuntime):
-    # unverified: standalone GitHub Copilot CLI `copilot -p "<prompt>"`. The old `gh copilot`
+    # Flags verified against @github/copilot 1.0.91 (`--help`; the call reaches its auth check): `-p` runs
+    # one prompt non-interactively, `-s` prints only the answer. No --allow-* flags: it must not use tools.
+    # An end-to-end answer needs a GitHub login/token, so that part is unverified. The old `gh copilot`
     # extension (suggest/explain) is not a scriptable agent and is not probed.
     runtime_name, display_name, env_var = "copilot", "Copilot", "COPILOT_CLI"
-    commands = (("copilot", "-p"),)
+    commands = (("copilot", "-s", "-p"),)
     prompt_mode = "arg"
 
 

@@ -15,7 +15,7 @@ Doğrulama dereceleri: **E2E** = gerçek bir araştırma baştan sona çalışt�
 | 5 | `codex` | `codex exec - --skip-git-repo-check -s read-only --ephemeral --color never` (stdin) | **SÖZDİZİMİ** (hesap token'ı iptal edilmiş) | ✅ (hesap yenilenmeli) |
 | 6 | `cursor` | `cursor-agent -p --output-format text <prompt>` | BELGE | ⚠ doğrulanamadı |
 | 7 | `gemini` | `gemini -p "<yönerge>" -o text` + stdin | **SÖZDİZİMİ** (API anahtarı geçersiz) | ✅ (anahtar yenilenmeli) |
-| 8 | `copilot` | `copilot -p <prompt>` | BELGE | ⚠ doğrulanamadı |
+| 8 | `copilot` | `copilot -s -p <prompt>` | CANLI (bayraklar) | ⚠ yalnız bayraklar doğrulandı: CLI kuruldu (`@github/copilot` 1.0.91), `-p`/`-s` kabul edildi, GitHub girişi olmadığı için yanıt alınamadı |
 | 9 | `amazon_q` | `q chat --no-interactive <prompt>` | BELGE | ⚠ doğrulanamadı |
 | 10 | `windsurf` | yok → generic (yalnız `WINDSURF_CLI` ile) | `windsurf` bir editör başlatıcısı | ✅ (generic) |
 | 11 | `kimi` | `kimi -p <prompt>` | **E2E** | ✅ |
@@ -53,3 +53,9 @@ Doğrulama dereceleri: **E2E** = gerçek bir araştırma baştan sona çalışt�
 - `codex` ve `gemini`: sözdizimi kabul edildi ama bu hesaplarda kimlik doğrulama geçersiz (codex: refresh token iptal; gemini: API anahtarı geçersiz) — model yanıtı alınamadı.
 - `generic`: gerçek LLM API çağrısı bu makinede ayrıca denenmedi.
 - `aider`/`cline`: platform tespit bayrakları (`AIDER_CHAT_MODE`/`AIDER_VERSION`, `CLINE_MCP`) platformlar tarafından ayarlandığı doğrulanamadı.
+
+## Son doğrulama turu (2026-10-03)
+- **codex:** `codex login status` "Logged in" diyor ama gerçek çağrı `refresh token was revoked` ile 401 veriyor. Tam koşu yine de başarılı: 3 ardışık CLI hatasından sonra CLI atlandı, API yedeği ile 2 bulgu üretildi (yedek yolu canlı kanıtlandı). Kullanıcının `codex logout && codex login` yapması gerekiyor.
+- **gemini:** `API key not valid` (400). Anahtar yenilenmeli.
+- **copilot:** CLI kuruldu, bayraklar doğrulandı (yukarıda); yanıt için GitHub girişi gerekli.
+- **cursor, amazon_q:** kurulmadı; bayraklar hâlâ belgeye dayalı.

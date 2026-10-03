@@ -57,6 +57,8 @@ def verify(claim: dict, question: str, voter_num: int, total_votes: int) -> str:
         f"Source: {claim['sourceUrl']} ({claim['sourceQuality']})\n"
         + ("" if claim.get("quoteInSource", True) else
            "WARNING: the quoted text could NOT be found verbatim in the fetched page; treat it as possibly fabricated.\n")
+        + (("Surrounding text from the fetched page:\n" + fence("source", claim["context"]) + "\n")
+           if claim.get("context") else "")
         + "\n"
         "Refute if unsupported, contradicted, low-quality, marketing, or outdated. Default to refuted=true if uncertain.\n\n"
         'Return JSON: {"refuted":true/false,"evidence":"...","confidence":"high|medium|low","counterSource":"..."}'
