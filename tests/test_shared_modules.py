@@ -417,3 +417,18 @@ class KeyedBackendTests(unittest.TestCase):
         boom = mock.Mock(side_effect=AssertionError("must not call"))
         self.assertIsNone(jina_reader_fetch("http://127.0.0.1/x", runner=boom))
         self.assertIsNone(jina_reader_fetch("file:///etc/passwd", runner=boom))
+
+
+class SearchKeyFileTests(unittest.TestCase):
+    def test_key_falls_back_to_env_file(self):
+        import tempfile
+        from core import websearch
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, ".env")
+            with open(path, "w") as handle:
+                handle.write("OTHER=x\nTAVILY_API_KEY='tvly-file-key'\n")
+            with mock.patch.object(websearch, "ENV_FILE", path), mock.patch.dict(os.environ, {}, clear=True):
+                self.assertEqual(websearch._search_key("TAVILY_API_KEY"), "tvly-file-key")
+                self.assertEqual(websearch._search_key("SERPER_API_KEY"), "")
+                with mock.patch.dict(os.environ, {"TAVILY_API_KEY": "from-env"}):
+                    self.assertEqual(websearch._search_key("TAVILY_API_KEY"), "from-env")

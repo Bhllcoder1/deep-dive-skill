@@ -27,6 +27,7 @@ from core.safefetch import USER_AGENT, secret_header_file
 from core.urlsafe import normalize_public_url
 
 _LOG = get_logger("websearch")
+ENV_FILE = "~/.hermes/.env"  # fallback source for search API keys
 BROWSER_UA = "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0"  # HTML engines reject bot UAs
 DDG_MIN_INTERVAL_S = 1.5
 DDG_BLOCK_SECONDS = 300
@@ -116,6 +117,22 @@ def ddg_html_search_with_curl(query: str, max_results: int, curl_path: str = "cu
     return parse_ddg_html(body, max_results)
 
 
+def _search_key(name: str) -> str:
+    """Search API key from the environment, else from ~/.hermes/.env (only these key names are read)."""
+    value = os.environ.get(name, "").strip()
+    if value:
+        return value
+    try:
+        with open(os.path.expanduser(ENV_FILE), encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                key, _, val = line.strip().partition("=")
+                if key == name and val.strip():
+                    return val.strip().strip("\"'")
+    except OSError:
+        pass
+    return ""
+
+
 def _proxy_args() -> List[str]:
     """curl --proxy args from DR_SEARCH_PROXY (e.g. socks5h://127.0.0.1:9050 for Tor); [] when unset/invalid."""
     proxy = os.environ.get("DR_SEARCH_PROXY", "").strip()
@@ -150,7 +167,7 @@ def _curl_post_json(url: str, body: dict, headers: dict, curl_path: str = "curl"
 def tavily_search(query: str, max_results: int, curl_path: str = "curl",
                   runner: Callable[..., Any] = subprocess.run) -> List[dict]:
     """Tavily (free tier ~1000/month); needs TAVILY_API_KEY."""
-    key = os.environ.get("TAVILY_API_KEY", "").strip()
+    key = _search_key("TAVILY_API_KEY")
     if not key:
         return []
     data = _curl_post_json("https://api.tavily.com/search", {"query": query, "max_results": min(max_results, 20)},
@@ -163,7 +180,7 @@ def tavily_search(query: str, max_results: int, curl_path: str = "curl",
 def serper_search(query: str, max_results: int, curl_path: str = "curl",
                   runner: Callable[..., Any] = subprocess.run) -> List[dict]:
     """Serper.dev Google results (free signup credits); needs SERPER_API_KEY."""
-    key = os.environ.get("SERPER_API_KEY", "").strip()
+    key = _search_key("SERPER_API_KEY")
     if not key:
         return []
     data = _curl_post_json("https://google.serper.dev/search", {"q": query, "num": min(max_results, 20)},
@@ -183,7 +200,7 @@ def _result(url: Any, title: Any, snippet: Any, relevance: str = "medium") -> Op
 def brave_search(query: str, max_results: int, curl_path: str = "curl",
                  runner: Callable[..., Any] = subprocess.run) -> List[dict]:
     """Brave Search API (https://api.search.brave.com); needs BRAVE_API_KEY."""
-    key = os.environ.get("BRAVE_API_KEY", "").strip()
+    key = _search_key("BRAVE_API_KEY")
     if not key:
         return []
     url = "https://api.search.brave.com/res/v1/web/search?" + urllib.parse.urlencode(
